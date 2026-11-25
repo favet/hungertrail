@@ -366,14 +366,27 @@ class Game:
             self.health = min(100, self.health + gain)
             self.heat = min(100, self.heat + 10)
             self.days[self.day].append("💤")
-            self._say("You sleep, and wake a little stronger.", "result")
+            self._say(self._pick(
+                "You sleep, and wake a little stronger.",
+                "You sleep like the dead. Not literally. Not yet.",
+                "You curl up under a fallen log and sleep until the birds wake you.",
+            ), "result")
         elif index == 1:
             if self._roll(self._chance({"base": 60, "mods": ["plants"]})):
                 self.food += 1
                 self.water += 2
-                self._say("Roots, a trickle of spring water. Enough.", "result")
+                self._say(self._pick(
+                    "Roots, a trickle of spring water. Enough.",
+                    "Wild onions and a seep of clean water between the rocks.",
+                    "Pine nuts, and rainwater pooled in a hollow stump.",
+                    "Cattail roots and a cold creek. Not bad.",
+                ), "result")
             else:
-                self._say("You find nothing but blisters.", "result")
+                self._say(self._pick(
+                    "You find nothing but blisters.",
+                    "Everything edible here was eaten days ago.",
+                    "Dark comes before you find anything.",
+                ), "result")
         elif index == 2:
             hits = max(0, min(3, int(param or 0)))
             self.days[self.day].append("🏹")
@@ -398,7 +411,12 @@ class Game:
             self.heat = max(0, self.heat - 15)
             self.days[self.day].append("🎥")
             if self._roll(self._chance({"base": 85, "mods": ["stealth"]})):
-                self._say("You wave at the sky. Somewhere, a sponsor opens their wallet.", "result")
+                self._say(self._pick(
+                    "You wave at the sky. Somewhere, a sponsor opens their wallet.",
+                    "You tell the cameras about home. The Capitol eats it up.",
+                    "You sing. Badly. They love it anyway.",
+                    "You carve your district number into a tree, slowly, for the cameras.",
+                ), "result")
             else:
                 self._say("You weren't the only one watching.", "result")
                 self._hurt(20, "a tribute who saw you showing off")
@@ -547,11 +565,16 @@ class Game:
             return False
         if "water" in need and self.water < need["water"]:
             return False
+        if "food" in need and self.food < need["food"]:
+            return False
         return True
 
     # ------------------------------------------------------------------ text
     def _name(self, t: str) -> str:
-        return self.partner if t == "partner" else t
+        return f"{self.partner}, your district partner" if t == "partner" else t
+
+    def _pick(self, *lines: str) -> str:
+        return self._dice().choice(lines)
 
     def _opponent(self) -> str:
         if self.allies:

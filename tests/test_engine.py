@@ -52,6 +52,9 @@ def test_cards_are_well_formed():
         assert c["options"], cid
         # Every card must have at least one option with no requirement, so nobody gets stuck.
         assert any(not o.get("need") for o in c["options"]), cid
+        # And events always offer a real choice.
+        if c["kind"] in ("event", "gamemaker", "feast", "betrayal", "launch"):
+            assert sum(1 for o in c["options"] if not o.get("need")) >= 2, cid
         for o in c["options"]:
             branches = [o["success"], o["fail"]] if "roll" in o else [o]
             for br in branches:

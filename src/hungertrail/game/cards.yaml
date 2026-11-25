@@ -265,6 +265,16 @@
       fail:
         text: The nest drops early. Onto you.
         effects: {health: -55, cause: "tracker jackers"}
+    - label: Raid their camp while they sleep
+      hint: Their supplies are right there. So are they.
+      tag: bold
+      roll: {base: 45, mods: [stealth]}
+      success:
+        text: You tiptoe out with food, water and a spear. Nobody stirs.
+        effects: {food: 2, water: 2, add: spear, favor: 15}
+      fail:
+        text: A Career sleeps lighter than the rest.
+        effects: {health: -45, cause: "the Career pack"}
     - label: Back away quietly
       tag: safe
       text: You back away. Nobody wakes. Nobody watching is impressed.
@@ -539,6 +549,16 @@
       tag: safe
       text: Chewed leaves and moss. It works.
       effects: {health: 20}
+    - label: Cut it open and clean it
+      hint: It'll hurt. It might work.
+      tag: bold
+      roll: {base: 55}
+      success:
+        text: You grit your teeth through it. By evening the swelling is down.
+        effects: {health: 10}
+      fail:
+        text: You made it worse.
+        effects: {health: -25, cause: "blood poisoning"}
     - label: Ignore it
       tag: safe
       text: It gets worse.
@@ -716,6 +736,295 @@
       fail:
         text: Groosling are faster than they look.
         effects: {heat: 5}
+    - label: Let them go
+      tag: safe
+      text: You watch dinner waddle away.
+      effects: {}
+
+# ---------------------------------------------------------------- more arena events
+- id: parachute_tree
+  kind: event
+  days: [2, 8]
+  emoji: "🪂"
+  text: A silver parachute hangs tangled in the branches above you. It wasn't meant for you.
+  options:
+    - label: Climb up and take it
+      tag: bold
+      roll: {base: 60, mods: [escape]}
+      success:
+        text: Finders keepers. Somebody's mentor is furious.
+        effects: {gift: true, favor: 5}
+      fail:
+        text: The branch was thinner than it looked.
+        effects: {health: -30, cause: "a fall from a tree"}
+    - label: Leave it
+      tag: safe
+      text: Not yours. Probably bait anyway.
+      effects: {heat: 5}
+
+- id: mud_pit
+  kind: event
+  days: [2, 8]
+  emoji: "🟫"
+  text: The ground under your feet turns to thick, sucking mud. You're in to your knees.
+  options:
+    - label: Throw your rope to a tree
+      need: {item: rope}
+      tag: safe
+      text: You haul yourself out, filthy and alive.
+      effects: {}
+    - label: Lean back and float
+      hint: Don't struggle. Everyone says don't struggle.
+      tag: safe
+      roll: {base: 75}
+      success: {text: "You spread out and inch your way back to solid ground."}
+      fail:
+        text: You sink to your chest before your fingers find a root.
+        effects: {health: -30, cause: "a mud pit"}
+    - label: Thrash your way out
+      tag: bold
+      roll: {base: 50}
+      success: {text: "Brute force works, this time."}
+      fail:
+        text: The mud keeps your boots, your food, and most of your strength.
+        effects: {health: -35, food: -1, cause: "a mud pit"}
+
+- id: starving_boy
+  kind: event
+  days: [2, 7]
+  emoji: "🥺"
+  text: The District {n} boy stumbles into your camp, unarmed and starving. He begs for food.
+  options:
+    - label: Share your food
+      need: {food: 1}
+      tag: safe
+      text: He eats, thanks you, and disappears into the trees. The Capitol weeps.
+      effects: {food: -1, favor: 20}
+    - label: Send him away
+      tag: safe
+      text: He goes. You don't watch.
+      effects: {}
+    - label: Kill him
+      tag: bold
+      text: He never had a chance. The crowd goes quiet.
+      effects: {kill: 1, favor: -10}
+
+- id: ledge
+  kind: event
+  days: [2, 8]
+  emoji: "🧗"
+  text: The only way forward is a narrow ledge above a long drop.
+  options:
+    - label: Cross carefully
+      tag: safe
+      roll: {base: 80, mods: [escape]}
+      success: {text: "One step at a time. You don't look down."}
+      fail:
+        text: You looked down.
+        effects: {health: -45, cause: "a long fall"}
+    - label: Go the long way around
+      tag: hide
+      text: It costs you the whole day and your last snack.
+      effects: {food: -1, heat: 15}
+
+- id: circling
+  kind: event
+  days: [2, 8]
+  emoji: "👁️"
+  text: Something is circling your camp in the dark. You can hear it breathing.
+  options:
+    - label: Stay awake all night
+      tag: safe
+      text: Whatever it was, it leaves at dawn. So does your strength.
+      effects: {health: -10, cause: "exhaustion"}
+    - label: Climb a tree and wait
+      tag: safe
+      roll: {base: 70, mods: [escape]}
+      success: {text: "You watch a mutt sniff at your empty bedroll, then lope away."}
+      fail:
+        text: It was faster than you.
+        effects: {health: -35, cause: "something in the dark"}
+    - label: Charge it
+      tag: bold
+      roll: {base: 50, mods: [combat]}
+      success:
+        text: It was a tribute. It was.
+        effects: {kill: 1, favor: 15}
+      fail:
+        text: It was not a tribute.
+        effects: {health: -45, cause: "something in the dark"}
+
+- id: hot_spring
+  kind: event
+  days: [2, 8]
+  emoji: "♨️"
+  text: Steam rises from a hot spring tucked in a rocky hollow.
+  options:
+    - label: Soak your wounds
+      tag: hide
+      text: For one hour you forget where you are. The cameras don't.
+      effects: {health: 25, heat: 15}
+    - label: Fill up and move on
+      tag: safe
+      text: It's warm and tastes of iron, but it's water.
+      effects: {water: 2}
+
+- id: careers_quarrel
+  kind: event
+  days: [3, 7]
+  requires: {min_remaining: 6}
+  emoji: "🗣️"
+  text: You hear the Careers below, arguing about who they'll hunt next. Your name comes up.
+  options:
+    - label: Creep closer and listen
+      tag: bold
+      roll: {base: 60, mods: [stealth]}
+      success:
+        text: Now you know where they won't be looking. The audience loves a schemer.
+        effects: {favor: 15, heat: -15}
+      fail:
+        text: They stop arguing and start running. Toward you.
+        effects: {health: -40, cause: "the Career pack"}
+    - label: Get far away from here
+      tag: safe
+      text: You put a mile between you and them before dark.
+      effects: {}
+
+- id: honey
+  kind: event
+  days: [2, 8]
+  emoji: "🍯"
+  text: Wild honey drips from a hollow log. Ordinary bees, as far as you can tell.
+  options:
+    - label: Smoke them out and take it
+      tag: bold
+      roll: {base: 65}
+      success:
+        text: Sticky, sweet, and worth every sting.
+        effects: {food: 2, favor: 5}
+      fail:
+        text: Not ordinary bees.
+        effects: {health: -30, cause: "angry bees"}
+    - label: Leave it
+      tag: safe
+      text: You walk away. Your stomach complains about it for hours.
+      effects: {}
+
+- id: fish_pool
+  kind: event
+  days: [2, 8]
+  emoji: "🐟"
+  text: Fat fish flicker in a shallow, clear pool.
+  options:
+    - label: Spear them
+      need: {any: [spear, trident]}
+      tag: safe
+      text: Three throws, three fish.
+      effects: {food: 3, water: 1}
+    - label: Catch them by hand
+      tag: bold
+      roll: {base: 45, mods: [swim]}
+      success:
+        text: Two fish and a bath.
+        effects: {food: 2, water: 1}
+      fail:
+        text: Fish are slippery. You drink, at least.
+        effects: {water: 1}
+    - label: Just drink
+      tag: safe
+      text: You drink your fill.
+      effects: {water: 2}
+
+- id: fresh_grave
+  kind: event
+  days: [3, 8]
+  emoji: "🪦"
+  text: Freshly turned earth under a crude wooden marker. Someone buried an ally here.
+  options:
+    - label: Pay your respects
+      tag: safe
+      text: You leave a flower. Somewhere, a district remembers this.
+      effects: {favor: 15, heat: -10}
+    - label: Dig for supplies
+      tag: bold
+      roll: {base: 70}
+      success:
+        text: They were buried with their pack. The Capitol is disgusted and can't look away.
+        effects: {gift: true, food: 1, favor: -15}
+      fail:
+        text: Nothing but dirt, and a lot of angry viewers.
+        effects: {favor: -20}
+
+- id: net_trap
+  kind: event
+  days: [2, 8]
+  emoji: "🕸️"
+  text: A net snaps shut and hoists you into the air. Someone set this for you.
+  options:
+    - label: Cut yourself free
+      need: {any: [knife, axe, spear, trident]}
+      tag: safe
+      text: You slice through the cords and drop to the ground, gone before the trapper returns.
+      effects: {}
+    - label: Struggle
+      tag: bold
+      roll: {base: 50}
+      success: {text: "A knot gives. You fall hard but free."}
+      fail:
+        text: You're still tangled when the trapper comes back.
+        effects: {health: -40, cause: "a tribute's trap"}
+    - label: Wait for the trapper and talk
+      tag: hide
+      roll: {base: 40}
+      success:
+        text: Turns out they wanted a deer. They cut you down and leave.
+        effects: {favor: 10}
+      fail:
+        text: Turns out they wanted you.
+        effects: {health: -45, cause: "a tribute's trap"}
+
+- id: landslide
+  kind: event
+  days: [2, 8]
+  emoji: "🪨"
+  text: The hillside above you groans. Rocks start to tumble.
+  options:
+    - label: Sprint downhill
+      tag: bold
+      roll: {base: 65, mods: [escape]}
+      success: {text: "You outrun it, barely, and the dust settles behind you."}
+      fail:
+        text: A boulder clips you on the way down.
+        effects: {health: -35, cause: "a landslide"}
+    - label: Press flat under an overhang
+      tag: safe
+      roll: {base: 75}
+      success: {text: "The world roars past, inches away."}
+      fail:
+        text: The overhang doesn't hold.
+        effects: {health: -40, cause: "a landslide"}
+
+- id: gm_quake
+  kind: gamemaker
+  emoji: "🌋"
+  text: The Gamemakers have noticed how quiet you've been. The ground splits open under your feet.
+  options:
+    - label: Jump the crack
+      tag: bold
+      roll: {base: 55, mods: [escape]}
+      success:
+        text: You land on the far side. The crowd roars.
+        effects: {favor: 20}
+      fail:
+        effects: {health: -55, cause: "the earthquake"}
+        text: You don't make it all the way.
+    - label: Hold onto a tree and pray
+      tag: safe
+      roll: {base: 60}
+      success: {text: "The tree holds. So do you."}
+      fail:
+        text: The tree goes first.
+        effects: {health: -40, cause: "the earthquake"}
 
 # ---------------------------------------------------------------- alliance falls apart
 - id: betrayal
@@ -882,7 +1191,7 @@
 
 - id: finale_duel
   kind: finale
-  emoji: "👑"
+  emoji: "⚔️"
   text: Two tributes left. You, and {opponent}, face to face on the horn.
   options:
     - label: Fight

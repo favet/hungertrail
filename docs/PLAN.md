@@ -4,6 +4,22 @@ A daily, 5–10 minute, text-first survival run. The Hunger Games' premise (24 e
 played with Oregon Trail's on-rails, deadpan, resource-juggling feel. Everyone gets the same arena
 each day; the share card is the payoff.
 
+## Status (2026-11-25): MVP live
+
+Phases 0-7 shipped as an MVP at hungertrail.com. The human fun check (Phase 1) was deferred to
+after launch at favet's request; bots and phone-browser walkthroughs stood in for it.
+
+- Done: engine, 50 cards (3 bloodbaths with 3 follow-ups, 35 events, 5 Gamemaker hazards, feast,
+  betrayal, 2 finale cards),
+  balance bots, phone-first web game, hunting minigame, results card and share text, daily seed
+  with one ranked run, practice mode, leaderboard on Cloudflare D1, pixel art, cannon sound.
+- Design calls made without a human playtest (review these first): exact odds shown as
+  percentages; rations are automatic (1 food + 1 water a night) rather than a setting; allies are
+  named tributes who can betray you and become your final opponent; a good player wins about 1
+  run in 6.
+- Deferred: share image (Open Graph card), tombstones with other players' epitaphs, analytics,
+  more arena types, sound beyond the cannon.
+
 ## Design answers
 
 ### 1. What is one run?

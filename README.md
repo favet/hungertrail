@@ -1,41 +1,42 @@
 ﻿# Hunger Trail
 
-The Hunger Games meets The Oregon Trail: a daily-seeded, text-based survival game at hungertrail.com.
+The Hunger Games meets The Oregon Trail: a daily, five-minute, text survival game at
+[hungertrail.com](https://hungertrail.com).
+
+24 tributes. One arena, the same for everyone each day. Pick a district and a skill, name your
+friends as allies, and try to be the last one standing. Then share your run:
+
+```
+HUNGER TRAIL #1 · District 12
+Placed 4th of 24 · 3 kills · Day 6
+🩸🌲💧🎁🔥☠️
+Killed by: tracker jackers
+hungertrail.com
+```
 
 ## Run locally
 
 ```sh
 uv sync
-uv run hungertrail          # serves http://127.0.0.1:8090
+uv run uvicorn hungertrail.app:app --reload   # http://127.0.0.1:8000
 uv run pytest
-```
-
-For auto-reload while developing:
-
-```sh
-uv run uvicorn hungertrail.app:app --reload
+uv run python -m hungertrail.game.bots        # balance report
 ```
 
 ## Configuration
 
-Settings come from environment variables; see `.env.example`. Set a real `HT_SEED_SECRET` on the
-host, or anyone can compute future daily seeds from the source.
-
-## Hosting (Cloudflare Tunnel)
-
-The app binds to `127.0.0.1` only. `cloudflared` runs on the same machine and forwards
-`hungertrail.com` to it, so no router ports are opened.
-
-```sh
-cloudflared tunnel login
-cloudflared tunnel create hungertrail
-cloudflared tunnel route dns hungertrail hungertrail.com
-cloudflared tunnel run --url http://127.0.0.1:8090 hungertrail
-```
+Settings come from environment variables; see `.env.example`. Set a real `HT_SEED_SECRET`
+anywhere public, or anyone can compute the daily arenas from the source.
 
 ## Layout
 
+- `src/hungertrail/game/`: rules engine, event cards (`cards.yaml`), names (`lore.py`), balance bots
+- `src/hungertrail/runs.py`: signed run tokens, replayed on the server
 - `src/hungertrail/app.py`: FastAPI routes
-- `src/hungertrail/daily.py`: daily seed (HMAC of the date; never sent to the browser)
-- `src/hungertrail/db.py`: SQLite (runs and leaderboard)
-- `src/hungertrail/templates/`, `static/`: front end
+- `src/hungertrail/static/`, `templates/`: the phone-first web page
+- `ops/keepalive/`, `ops/leaderboard/`: Cloudflare Workers (keep Render awake; leaderboard on D1)
+- `docs/PLAN.md`: design and roadmap
+
+## Hosting
+
+Render free tier (`render.yaml`), with Cloudflare DNS. See `CLAUDE.md` for the details.
