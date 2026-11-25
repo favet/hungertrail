@@ -1,0 +1,8 @@
+# Cron-only Worker that pings the Render free-tier app so it never spins down.
+name = "hungertrail-keepalive"
+main = "index.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+
+[triggers]
+crons = ["*/10 * * * *"]
