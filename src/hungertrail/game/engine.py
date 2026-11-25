@@ -273,14 +273,15 @@ class Game:
             self.food -= 1
         else:
             fed = False
-            self._hurt(15, "starvation")
             self._say("You go to sleep hungry.", "status")
+            self._hurt(15, "starvation")
         if self.water > 0:
             self.water -= 1
         else:
             watered = False
-            self._hurt(20, "dehydration")
-            self._say("Your lips are cracked. You need water.", "status")
+            if not self.over:
+                self._say("Your lips are cracked. You need water.", "status")
+                self._hurt(20, "dehydration")
         if self.over:
             return
         if fed and watered:

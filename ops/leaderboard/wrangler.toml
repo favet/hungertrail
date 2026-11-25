@@ -1,0 +1,10 @@
+# Hunger Trail leaderboard: a tiny API over D1, called only by the game server.
+name = "hungertrail-lb"
+main = "index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hungertrail-lb"
+database_id = "27e02f3a-c4b9-496c-9a9e-788bc58ed58b"

@@ -18,17 +18,20 @@ class Settings:
     host: str
     port: int
     db_path: Path
+    # Production leaderboard Worker. Unset locally, which means a SQLite file instead.
+    leaderboard_url: str | None
 
 
 def load_settings() -> Settings:
     return Settings(
         seed_secret=os.environ.get("HT_SEED_SECRET", "dev-only-not-secret"),
         timezone=ZoneInfo(os.environ.get("HT_TIMEZONE", "America/Los_Angeles")),
-        launch_date=date.fromisoformat(os.environ.get("HT_LAUNCH_DATE", "2026-11-23")),
+        launch_date=date.fromisoformat(os.environ.get("HT_LAUNCH_DATE", "2026-11-25")),
         # Bind to localhost only: Cloudflare Tunnel connects from this same machine.
         host=os.environ.get("HT_HOST", "127.0.0.1"),
         port=int(os.environ.get("HT_PORT", "8090")),
         db_path=Path(os.environ.get("HT_DB_PATH", "data/hungertrail.sqlite3")),
+        leaderboard_url=os.environ.get("HT_LEADERBOARD_URL") or None,
     )
 
 

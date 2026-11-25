@@ -15,4 +15,6 @@ services:
       - key: HT_TIMEZONE
         value: America/Los_Angeles
       - key: HT_LAUNCH_DATE
-        value: 2026-11-23
+        value: 2026-11-25
+      - key: HT_LEADERBOARD_URL
+        value: https://hungertrail-lb.justin-favet.workers.dev
