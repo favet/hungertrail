@@ -1,0 +1,39 @@
+:root {
+  --bg: #0b0f0a;
+  --fg: #c8f5b4;
+  --dim: #6f8f62;
+  --accent: #ff8a3d;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  display: grid;
+  place-items: center;
+}
+
+.screen {
+  width: min(36rem, 100% - 2rem);
+  padding: 2rem 0;
+}
+
+.kicker { color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; font-size: 0.8rem; }
+
+h1 {
+  margin: 0.5rem 0 1rem;
+  font-size: clamp(3rem, 14vw, 5.5rem);
+  line-height: 0.9;
+  color: var(--accent);
+  text-shadow: 4px 4px 0 #3a1a08;
+}
+
+.tagline { font-size: 1.1rem; line-height: 1.5; }
+.status { color: var(--dim); }
+
+.blink { animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
