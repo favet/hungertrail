@@ -191,6 +191,7 @@ class Game:
         self.new_kills: list[str] = []
         self.last: tuple = ("", None, 100)
         self.kills_today = 0
+        self.killed: set[str] = set()
 
         r = _rng(seed, "allies", self.district)
         for _ in self.ally_names:
@@ -295,7 +296,8 @@ class Game:
         out = []
         if "health" in e:
             n = e["health"] if e["health"] > 0 else -round(-e["health"] * DAMAGE)
-            out.append(f"❤️{_sign(n)}")
+            if n > -self.health:  # a hit that would kill you shows as ☠️ alone, below
+                out.append(f"❤️{_sign(n)}")
         if e.get("supplies"):
             out.append(f"🎒{_sign(e['supplies'])}")
         for item in self._list(e.get("add")):
@@ -551,14 +553,26 @@ class Game:
         n = len(self.fallen_today) - self.announced
         if n:
             self._say(f"{'A cannon fires' if n == 1 else f'{n} cannons fire'} in the distance today.", "cannon")
-        sky = "The anthem plays. "
-        sky += ("Faces in the sky: " + ", ".join(self._name(t) for t in self.fallen_today) + ".") if self.fallen_today else "No faces in the sky tonight."
+        sky = "The anthem plays. " + self._faces()
         if scheduled and self.nemesis in self.pool and self.day > 1:
             self.nemesis_kills += 1 + (len(scheduled) >= 4)
             sky += f" {self.nemesis_name[0].upper()}{self.nemesis_name[1:]} is up to {self.nemesis_kills} kills."
         self._say(sky, "sky")
         self.day += 1
         self._morning()
+
+    def _faces(self) -> str:
+        """Tonight's dead: by name when they mattered to you, otherwise just counted."""
+        fallen = self.fallen_today
+        if not fallen:
+            return "No faces in the sky tonight."
+        if len(fallen) <= 3:
+            return "Faces in the sky: " + ", ".join(self._name(t) for t in fallen) + "."
+        known = [t for t in fallen if t in ("partner", self.nemesis) or t in self.ally_names or t in self.killed]
+        if not known:
+            return f"{len(fallen)} faces in the sky."
+        rest = len(fallen) - len(known)
+        return "Faces in the sky: " + ", ".join(self._name(t) for t in known) + f", and {rest} more."
 
     def _caesar(self, at_edge: bool) -> list[str]:
         d = f"District {self.district}"
@@ -631,8 +645,9 @@ class Game:
                 win, lose = ["🎁 sponsor gift likely"], ["👁️ you'll be seen"]
             else:  # feast
                 win, lose = ["❤️ 🎒 what you need"], ["⚔️ everyone"]
-            if key in EDGE and (self.edge_streak >= 1 or self.day >= EDGE_WATCHED):
-                lose = lose + ["⚠️ Gamemakers"]
+            if key in EDGE:
+                watched = self.edge_streak >= 1 or self.day >= EDGE_WATCHED
+                lose = lose + (["⚠️ Gamemakers"] if watched else ["🌲 the edge"])
             out.append(self._opt(PLACE_KEYS.index(key), f"{emoji} {label}", hint, None, tag, win, lose, place=key, **extra))
         return out
 
@@ -820,7 +835,8 @@ class Game:
             pool = [i for i in ("knife", "spear", "rope", "medkit", "iodine", "axe") if i not in self.kit]
             if pool:
                 item = self._dice().choice(pool)
-                self._say(f"You found {'an' if item[0] in 'aeiou' else 'a'} {lore.item_name(item)}.", "gift")
+                article = "some" if item == "iodine" else "an" if item[0] in "aeiou" else "a"
+                self._say(f"You found {article} {lore.item_name(item)}.", "gift")
                 self._gain(item)
         if e.get("kill"):
             self._kill(e["kill"])
@@ -863,6 +879,7 @@ class Game:
                 v = victims[0]
             self.pool.remove(v)
             self.fallen_today.append(v)
+            self.killed.add(v)
             self.new_kills.append(self._name(v))
             self.kills += 1
             self.kills_today += 1

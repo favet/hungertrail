@@ -83,7 +83,6 @@
 .option .hint { font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .option .stakes { display: flex; flex-wrap: wrap; gap: 0 0.6rem; font-size: 0.74rem; line-height: 1.3; margin-top: 0.05rem; }
 .option .stakes span { white-space: nowrap; }
-.option.place .stakes span + span { margin-left: 0; }
 #options.draft { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
 .option.grab .label { min-width: 0; overflow: hidden; }
 #options.draft .option:not(.grab), #options.draft .legend { grid-column: 1 / -1; }
@@ -96,6 +95,26 @@
 .lose.deadly { color: var(--bad); font-weight: bold; }
 .legend { font-size: 0.72rem; color: var(--dim); margin: 0.1rem 0 0; text-align: center; }
 .recap { font-size: 0.9rem; margin-top: -0.3rem; }
+
+/* One type system. Prose: mono at one size. Pixel font only for headings, odds and big moments.
+   Italic only for Caesar's voice. Secondary text: one small size, dimmed. */
+#log .entry { font-size: 15px; line-height: 1.45; font-weight: normal; font-style: normal; }
+#log .entry.event { color: var(--fg); }
+#log .entry.prompt, #log .entry.sky { color: var(--dim); }
+#log .entry.caesar { font-style: italic; }
+#log .entry.cannon { color: var(--gold); }
+#log .entry.delta { font-weight: bold; }
+#log .entry.day, #log .entry.system { display: none; }  /* the day header and status bar already say it */
+#log .entry.death { font-family: var(--pixel); font-size: 1.6rem; line-height: 1.05; }
+#log .entry.victory { font-family: var(--pixel); font-size: 1.8rem; line-height: 1.05; }
+#log .entry.roll { font-size: 15px; align-items: center; }
+#log .entry.roll span { font-family: var(--pixel); font-size: 1.3rem; }
+#options .option .ltext, #options .option.grab .ltext { font-family: var(--mono); font-size: 15px; font-weight: bold; }
+#options .option .hint, #options .option.grab .hint { font-family: var(--mono); font-size: 12px; }
+#options .option .stakes { font-family: var(--mono); font-size: 12.5px; }
+.legend { font-size: 12px; }
+.daysum { font-size: 12px; }
+#status .stat b { font-variant-numeric: tabular-nums; }
 
 @media (max-width: 360px) {
   .hbar { width: 2rem; }

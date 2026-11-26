@@ -191,13 +191,18 @@ function statusBar(s) {
   // A health loss leaves a red ghost of what you lost, which then drains away.
   if (to < from) hpBar.append(el("i", { class: "ghost", style: `width:${from}%` }));
   hpBar.append(el("i", { class: "fill", style: `width:${to}%` }));
-  const hp = el("span", { class: "stat health h-" + hw }, "❤️ ", el("b", { text: s.health_word }), hpBar);
+  const hp = el("span", { class: "stat health h-" + hw, title: s.health_word }, "❤️ ", el("b", { text: Math.max(0, s.health) }), hpBar);
   const food = el("span", { class: "stat food" + (s.supplies === 0 ? " warn" : s.supplies === 1 ? " low" : "") }, "🎒 ", el("b", { text: sup }));
   if (prev) {
     if (s.health !== prev.health) hp.classList.add("pulse", s.health > prev.health ? "up" : "down");
     if (s.supplies !== prev.supplies) food.classList.add("pulse", s.supplies > prev.supplies ? "up" : "down");
   }
   if (to < from) requestAnimationFrame(() => setTimeout(() => { const g = $(".ghost", hpBar); if (g) g.style.width = to + "%"; }, 450));
+  // The first time the medkit can be used, say how.
+  if (s.can_use === "medkit" && !(prev && prev.can_use)) {
+    const k = "tip.medkit";
+    if (!store.get(k)) { store.set(k, true); setTimeout(() => toast("Tip: tap your 🩹 medkit to heal 40."), 900); }
+  }
   lastStatus = s;
   const who = [s.kills ? `⚔️ ${s.kills}` : "", s.allies.length ? "🤝 " + s.allies.join(", ") : ""].filter(Boolean).join(" · ");
   const duel = s.duel ? ` · Duel ${s.duel[0]}–${s.duel[1]}` : "";
@@ -260,7 +265,8 @@ function render(first = false) {
       // The reveal: the roll against the odds, big and coloured, right under your choice.
       tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
       const head = entry.ok ? "✓ MADE IT" : entry.near ? "✗ SO CLOSE" : "✗ MISSED";
-      node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: ` ${entry.chance}% · rolled ${entry.roll}` }));
+      const note = entry.near ? `${entry.chance}% · half damage` : `${entry.chance}%`;
+      node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: note }));
       if (!first && navigator.vibrate) setTimeout(() => navigator.vibrate(entry.ok ? 15 : [30, 40, 30]), delay);
     } else {
       const text = entry.kind === "choice" ? "> " + entry.text : entry.text;
@@ -299,7 +305,7 @@ function render(first = false) {
   v.options.forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
   if (v.card === "draft" && v.status.day === 1 && !v.log.some((e) => e.kind === "roll")) {
     box.append(el("p", { class: "legend appear", style: `animation-delay:${delay + 300}ms` },
-      el("span", { class: "win", text: "✓" }), " if it works  ", el("span", { class: "lose", text: "✗" }), " if it doesn't  ☠️ could kill you"));
+      el("span", { class: "lose", text: "✗" }), " what a miss costs  ☠️ could kill you"));
   }
   animating = delay > 0 ? setTimeout(() => (animating = 0), delay + 400) : 0;
 }
@@ -336,8 +342,8 @@ function optionButton(o, i, delay, card) {
         el("span", { class: "stakes" }, el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + o.lose.join(" ") }))),
       el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" }));
   }
-  const hint = o.hint;
-  return el("button", { class: "option appear" + (o.place ? " place" : ""), style: `animation-delay:${delay + i * 60}ms`, onclick: () => pickOption(o) },
+  const hint = o.place ? null : o.hint;  // places speak through their chips
+  return el("button", { class: "option appear" + (o.place ? " where" : ""), style: `animation-delay:${delay + i * 60}ms`, onclick: () => pickOption(o) },
     el("span", { class: "key", text: i + 1 }),
     el("span", { class: "label" },
       el("span", { class: "ltext", text: o.label }),
