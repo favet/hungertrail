@@ -1,21 +1,24 @@
-# Hunger Trail BETA event cards. (Converted from the live cards, then edited by hand.)
+# Hunger Trail BETA event cards.
 #
-# Card:    id, kind (event|gamemaker|feast|betrayal|finale), days [min, max], emoji, text,
-#          requires {ally, partner, min_remaining, max_remaining, max_health},
-#          target (any|girl|boy: a living tribute the card is about; {Target} in text, and the
-#          one who dies if you kill)
+# Card:    id, kind (event|gamemaker|feast|betrayal|finale), place (events only: a list of
+#          stream|rocks|ridge|horn|open: where in the arena you meet it), days [min, max], emoji,
+#          text, requires {ally, partner, nemesis, min_remaining, max_remaining, max_health},
+#          target (any|girl|boy|nemesis: a living tribute the card is about; {Target} in text, and
+#          the one who dies if you kill)
 # Option:  label, hint, tag (safe|bold|hide), need {item|any|perk (district)|ally|supplies}
 #          then EITHER  text + effects
 #          OR           roll {base, mods: [combat|escape|stealth|forage|swim]} + success + fail
-# Effects: health supplies crowd (+/-), add/remove (item or list), kill (n),
+# Effects: health supplies (+/-), add/remove (item or list), kill (n), sponsor (a silver
+#          parachute: what you need most), gift (a random found item),
 #          ally (dies|lost|joins_partner), die (cause), cause (if this outcome kills you),
-#          next (card id, or "duel"), gift (a random found item), win, partner_dies
-# The crowd is hidden: Caesar's nightly line tells the player how it feels. Bold options and
-# positive crowd effects are marked 🎥 on screen.
-# Text can use {ally} {partner} {district} {Target} {target} {remaining}.
+#          next (card id, or "duel"), win, partner_dies
+# Nothing is hidden: every effect shows on the option as a chip.
+# Text can use {ally} {partner} {district} {Target} {target} {Nemesis} {nemesis} {remaining}.
 
 - id: smoke_east
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 7
@@ -33,7 +36,6 @@
       text: A careless tribute's camp, abandoned for water. You take everything.
       effects:
         supplies: 3
-        crowd: 10
     fail:
       text: The fire was bait. The Careers were waiting.
       effects:
@@ -42,10 +44,11 @@
   - label: Go the other way
     tag: safe
     text: You head west. The crowd yawns.
-    effects:
-      crowd: -10
+    effects: {}
 - id: cloudy_stream
   kind: event
+  place:
+  - stream
   days:
   - 2
   - 8
@@ -79,10 +82,11 @@
   - label: Keep looking
     tag: safe
     text: You walk on, thirsty.
-    effects:
-      crowd: -5
+    effects: {}
 - id: berries
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 8
@@ -113,10 +117,11 @@
   - label: Leave them
     tag: safe
     text: You leave them for someone hungrier.
-    effects:
-      crowd: -5
+    effects: {}
 - id: tracker_jackers
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 7
@@ -142,7 +147,7 @@
         kill: 2
         health: -15
         add: bow
-        crowd: 30
+        sponsor: true
     fail:
       text: The nest drops early. Onto you.
       effects:
@@ -160,7 +165,7 @@
       effects:
         add: spear
         supplies: 3
-        crowd: 15
+        sponsor: true
     fail:
       text: A Career sleeps lighter than the rest.
       effects:
@@ -181,6 +186,8 @@
         cause: tracker jackers
 - id: high_river
   kind: event
+  place:
+  - stream
   days:
   - 2
   - 8
@@ -196,8 +203,7 @@
       - swim
     success:
       text: Cold to the bone, but across.
-      effects:
-        crowd: 5
+      effects: {}
     fail:
       text: The current takes your feet. You lose supplies and nearly yourself.
       effects:
@@ -223,9 +229,10 @@
     text: You wait a day. The water drops. The crowd changes the channel.
     effects:
       supplies: -1
-      crowd: -20
 - id: lone_sleeper
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 8
@@ -244,7 +251,6 @@
       effects:
         kill: 1
         supplies: 2
-        crowd: 10
     fail:
       text: They wake first.
       effects:
@@ -260,7 +266,6 @@
       text: You take the pack and leave them to wake up hungry.
       effects:
         supplies: 3
-        crowd: 5
     fail:
       text: A twig snaps. You run with nothing.
       effects:
@@ -269,10 +274,11 @@
   - label: Let them sleep
     tag: safe
     text: You walk away. Somewhere, a sponsor likes that.
-    effects:
-      crowd: 5
+    effects: {}
 - id: career_pack
   kind: event
+  place:
+  - horn
   days:
   - 2
   - 7
@@ -304,8 +310,7 @@
       - escape
     success:
       text: You're thirty feet up before they see you. They camp below, then give up.
-      effects:
-        crowd: 10
+      effects: {}
     fail:
       text: A branch snaps. You hit the ground running.
       effects:
@@ -322,13 +327,15 @@
       text: The crowd will talk about this for years.
       effects:
         kill: 2
-        crowd: 40
+        sponsor: true
     fail:
       effects:
         die: the Career pack
       text: Four against one.
 - id: snared_girl
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 7
@@ -343,20 +350,20 @@
     text: She drinks and cries. Somewhere in the Capitol, people cry with her.
     effects:
       supplies: -1
-      crowd: 20
+      sponsor: true
   - label: End it
     tag: bold
     text: Quick. The crowd isn't sure how to feel.
     effects:
       kill: 1
-      crowd: -5
   - label: Walk away
     tag: safe
     text: You walk away. Her voice follows you a long way.
-    effects:
-      crowd: -10
+    effects: {}
 - id: dry_cave
   kind: event
+  place:
+  - rocks
   days:
   - 2
   - 8
@@ -368,7 +375,6 @@
     text: You sleep for hours. It's wonderful. It's also terrible television.
     effects:
       health: 20
-      crowd: -20
   - label: Keep moving
     tag: safe
     text: You walk all night in the rain. It takes something out of you.
@@ -377,6 +383,8 @@
       cause: exposure
 - id: cold_night
   kind: event
+  place:
+  - rocks
   days:
   - 2
   - 8
@@ -396,7 +404,6 @@
     text: You share warmth with {ally}. The cameras love it.
     effects:
       health: -5
-      crowd: 10
   - label: Build a fire
     hint: Warmth. Light. Smoke.
     tag: bold
@@ -419,6 +426,8 @@
       cause: exposure
 - id: ally_fever
   kind: event
+  place:
+  - rocks
   days:
   - 3
   - 8
@@ -432,8 +441,7 @@
       perk: 11
     tag: safe
     text: You find willow bark. By night, {ally} is sitting up.
-    effects:
-      crowd: 10
+    effects: {}
   - label: Use your medkit
     need:
       item: medkit
@@ -441,7 +449,6 @@
     text: It wasn't made for fevers, but {ally} pulls through.
     effects:
       remove: medkit
-      crowd: 10
   - label: Stay and hope
     tag: hide
     roll:
@@ -449,22 +456,21 @@
       mods: []
     success:
       text: '{ally} sweats it out by morning.'
-      effects:
-        crowd: -10
+      effects: {}
     fail:
       text: '{ally} has died.'
       effects:
         ally: dies
-        crowd: -10
   - label: Leave {ally} behind
     tag: bold
     text: You leave {ally} with some water and don't look back.
     effects:
       ally: lost
       supplies: -1
-      crowd: -10
 - id: ally_pinned
   kind: event
+  place:
+  - horn
   days:
   - 2
   - 8
@@ -483,7 +489,7 @@
       text: Two against one. The Career doesn't get up.
       effects:
         kill: 1
-        crowd: 20
+        sponsor: true
     fail:
       text: You get there too late for {ally}, and just in time for the Career.
       effects:
@@ -495,9 +501,10 @@
     text: You run. The cannon fires a minute later. {ally} has died.
     effects:
       ally: dies
-      crowd: -15
 - id: open_pack
   kind: event
+  place:
+  - horn
   days:
   - 2
   - 8
@@ -523,10 +530,11 @@
   - label: Leave it
     tag: safe
     text: You leave it for someone dumber.
-    effects:
-      crowd: -5
+    effects: {}
 - id: lake_shore
   kind: event
+  place:
+  - stream
   days:
   - 2
   - 8
@@ -554,9 +562,10 @@
     text: You wait in the reeds all day, then drink under the stars.
     effects:
       supplies: 2
-      crowd: -15
 - id: festering_wound
   kind: event
+  place:
+  - rocks
   days:
   - 3
   - 8
@@ -603,6 +612,8 @@
       cause: blood poisoning
 - id: strange_snare
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 8
@@ -636,7 +647,6 @@
       effects:
         kill: 1
         supplies: 1
-        crowd: 10
     fail:
       text: They come back with a friend.
       effects:
@@ -645,29 +655,11 @@
   - label: Leave it
     tag: safe
     text: Not your rabbit.
-    effects:
-      crowd: -5
-- id: cameras
-  kind: event
-  days:
-  - 2
-  - 8
-  emoji: 🎥
-  text: You can feel the cameras on you. Nothing has happened for hours, and the Capitol is restless.
-  options:
-  - label: Give them a show
-    hint: Talk to your family. Sing. Shout at the sky.
-    tag: bold
-    text: You give them something to remember. The sponsors take note.
-    effects:
-      crowd: 25
-  - label: Stay low
-    tag: hide
-    text: You stay low. So do the ratings.
-    effects:
-      crowd: -15
+    effects: {}
 - id: partner_wounded
   kind: event
+  place:
+  - stream
   days:
   - 3
   - 7
@@ -684,21 +676,21 @@
     effects:
       ally: joins_partner
       supplies: -1
-      crowd: 25
+      sponsor: true
   - label: Walk away
     tag: safe
     text: You leave {partner} to it. Home will hear about this.
-    effects:
-      crowd: -10
+    effects: {}
   - label: End it
     tag: bold
     text: You do the unthinkable. The Capitol gasps, then cheers.
     effects:
       kill: 1
       partner_dies: true
-      crowd: 5
 - id: storm
   kind: event
+  place:
+  - open
   days:
   - 2
   - 8
@@ -726,6 +718,8 @@
         cause: a flash flood
 - id: career_stash
   kind: event
+  place:
+  - horn
   days:
   - 2
   - 6
@@ -745,7 +739,7 @@
       effects:
         add: spear
         supplies: 4
-        crowd: 15
+        sponsor: true
     fail:
       text: The boy shouts. The Careers come running.
       effects:
@@ -754,10 +748,11 @@
   - label: Leave it
     tag: safe
     text: Too risky. Probably.
-    effects:
-      crowd: -5
+    effects: {}
 - id: warm_camp
   kind: event
+  place:
+  - open
   days:
   - 2
   - 8
@@ -785,6 +780,8 @@
     effects: {}
 - id: two_fighting
   kind: event
+  place:
+  - horn
   days:
   - 2
   - 8
@@ -805,7 +802,7 @@
       effects:
         kill: 1
         gift: true
-        crowd: 15
+        sponsor: true
     fail:
       text: The winner wasn't as tired as they looked.
       effects:
@@ -826,6 +823,8 @@
         cause: a tribute's blade
 - id: groosling
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 8
@@ -850,7 +849,6 @@
       effects:
         health: -15
         cause: a tribute who heard you hunting
-        crowd: 5
   - label: Chase one down
     tag: bold
     roll:
@@ -860,17 +858,17 @@
       text: You tackle it. Dignity is a Capitol luxury.
       effects:
         supplies: 2
-        crowd: 5
     fail:
       text: Groosling are faster than they look.
-      effects:
-        crowd: -5
+      effects: {}
   - label: Let them go
     tag: safe
     text: You watch dinner waddle away.
     effects: {}
 - id: parachute_tree
   kind: event
+  place:
+  - open
   days:
   - 2
   - 8
@@ -887,7 +885,6 @@
       text: Finders keepers. Somebody's mentor is furious.
       effects:
         gift: true
-        crowd: 5
     fail:
       text: The branch was thinner than it looked.
       effects:
@@ -896,10 +893,11 @@
   - label: Leave it
     tag: safe
     text: Not yours. Probably bait anyway.
-    effects:
-      crowd: -5
+    effects: {}
 - id: mud_pit
   kind: event
+  place:
+  - stream
   days:
   - 2
   - 8
@@ -940,6 +938,8 @@
         supplies: -1
 - id: starving_boy
   kind: event
+  place:
+  - rocks
   days:
   - 2
   - 7
@@ -954,20 +954,20 @@
     text: He eats, thanks you, and disappears into the trees. The Capitol weeps.
     effects:
       supplies: -1
-      crowd: 20
+      sponsor: true
   - label: Send him away
     tag: safe
     text: He goes. You don't watch.
-    effects:
-      crowd: -10
+    effects: {}
   - label: Kill him
     tag: bold
     text: He never had a chance. The crowd goes quiet.
     effects:
       kill: 1
-      crowd: -10
 - id: ledge
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 8
@@ -992,9 +992,10 @@
     text: It costs you the whole day and your last snack.
     effects:
       supplies: -1
-      crowd: -15
 - id: circling
   kind: event
+  place:
+  - open
   days:
   - 2
   - 8
@@ -1030,7 +1031,7 @@
       text: It was a tribute. It was.
       effects:
         kill: 1
-        crowd: 15
+        sponsor: true
     fail:
       text: It was not a tribute.
       effects:
@@ -1038,6 +1039,8 @@
         cause: something in the dark
 - id: hot_spring
   kind: event
+  place:
+  - rocks
   days:
   - 2
   - 8
@@ -1049,7 +1052,6 @@
     text: For one hour you forget where you are. The cameras don't.
     effects:
       health: 25
-      crowd: -15
   - label: Fill up and move on
     tag: safe
     text: It's warm and tastes of iron, but it's water.
@@ -1057,6 +1059,8 @@
       supplies: 1
 - id: careers_quarrel
   kind: event
+  place:
+  - horn
   days:
   - 3
   - 7
@@ -1074,7 +1078,7 @@
     success:
       text: Now you know where they won't be looking. The audience loves a schemer.
       effects:
-        crowd: 30
+        sponsor: true
     fail:
       text: They stop arguing and start running. Toward you.
       effects:
@@ -1096,6 +1100,8 @@
         cause: the Career pack
 - id: honey
   kind: event
+  place:
+  - ridge
   days:
   - 2
   - 8
@@ -1111,7 +1117,6 @@
       text: Sticky, sweet, and worth every sting.
       effects:
         supplies: 2
-        crowd: 5
     fail:
       text: Not ordinary bees.
       effects:
@@ -1123,6 +1128,8 @@
     effects: {}
 - id: fish_pool
   kind: event
+  place:
+  - stream
   days:
   - 2
   - 8
@@ -1159,6 +1166,8 @@
       supplies: 1
 - id: fresh_grave
   kind: event
+  place:
+  - open
   days:
   - 3
   - 8
@@ -1169,7 +1178,7 @@
     tag: safe
     text: You leave a flower. Somewhere, a district remembers this.
     effects:
-      crowd: 15
+      sponsor: true
   - label: Dig for supplies
     tag: bold
     roll:
@@ -1180,13 +1189,13 @@
       effects:
         gift: true
         supplies: 1
-        crowd: -15
     fail:
       text: Nothing but dirt, and a lot of angry viewers.
-      effects:
-        crowd: -20
+      effects: {}
 - id: net_trap
   kind: event
+  place:
+  - stream
   days:
   - 2
   - 8
@@ -1222,8 +1231,7 @@
       mods: []
     success:
       text: Turns out they wanted a deer. They cut you down and leave.
-      effects:
-        crowd: 10
+      effects: {}
     fail:
       text: Turns out they wanted you.
       effects:
@@ -1231,6 +1239,8 @@
         cause: a tribute's trap
 - id: landslide
   kind: event
+  place:
+  - rocks
   days:
   - 2
   - 8
@@ -1265,7 +1275,7 @@
 - id: gm_quake
   kind: gamemaker
   emoji: 🌋
-  text: The Gamemakers have noticed how quiet you've been. The ground splits open under your feet.
+  text: The Gamemakers want you out of hiding. The ground splits open under your feet.
   options:
   - label: Jump the crack
     tag: bold
@@ -1276,7 +1286,7 @@
     success:
       text: You land on the far side. The crowd roars.
       effects:
-        crowd: 20
+        sponsor: true
     fail:
       effects:
         health: -55
@@ -1313,7 +1323,7 @@
     success:
       text: '{ally} stands watch all night. The crowd adores you both.'
       effects:
-        crowd: 15
+        sponsor: true
     fail:
       text: You wake to {ally}'s knife.
       effects:
@@ -1336,7 +1346,6 @@
       effects:
         ally: dies
         kill: 1
-        crowd: -10
     fail:
       text: '{ally} was expecting it.'
       effects:
@@ -1346,7 +1355,8 @@
 - id: gm_fire
   kind: gamemaker
   emoji: 🔥
-  text: The Gamemakers are bored with you. A wall of fire roars through the forest, straight at you.
+  text: The Gamemakers are done waiting for you to come out. A wall of fire roars through the forest, straight at
+    you.
   options:
   - label: Run downhill to the water
     tag: safe
@@ -1370,7 +1380,7 @@
     success:
       text: You leap through. The crowd roars.
       effects:
-        crowd: 25
+        sponsor: true
     fail:
       effects:
         health: -60
@@ -1379,7 +1389,8 @@
 - id: gm_mutts
   kind: gamemaker
   emoji: 🐺
-  text: Wolf-like mutts pour out of the treeline. Their eyes look almost human.
+  text: Wolf-like mutts pour out of the treeline, herding you toward the middle of the arena. Their eyes look almost
+    human.
   options:
   - label: Climb
     tag: safe
@@ -1403,7 +1414,7 @@
     success:
       text: You kill two and the rest slink off. The Capitol is on its feet.
       effects:
-        crowd: 30
+        sponsor: true
     fail:
       effects:
         health: -60
@@ -1467,11 +1478,11 @@
 - id: feast
   kind: feast
   emoji: 🍽️
-  text: '{host}''s voice booms across the arena. A feast at the Cornucopia at dawn - each of you will find something
-    you need desperately.'
+  text: The feast. A table at the mouth of the horn, a pack for every district. Yours has your number on it. So
+    does everyone else's.
   options:
-  - label: Go to the feast
-    hint: Everyone left alive will be there.
+  - label: Run straight for your pack
+    hint: Everyone left alive is here.
     tag: bold
     roll:
       base: 50
@@ -1482,17 +1493,27 @@
       effects:
         health: 30
         supplies: 3
-        crowd: 20
+        sponsor: true
     fail:
       text: Someone was waiting for you specifically.
       effects:
         health: -45
         cause: an ambush at the Feast
-  - label: Stay away
-    tag: hide
-    text: You stay away. The Gamemakers take it personally.
-    effects:
-      crowd: -30
+  - label: Wait for the crowd to thin
+    tag: safe
+    roll:
+      base: 65
+      mods:
+      - stealth
+    success:
+      text: The others tear into each other. You take what's left.
+      effects:
+        supplies: 2
+    fail:
+      text: Someone else was waiting too.
+      effects:
+        health: -15
+        cause: an ambush at the Feast
 - id: flood
   kind: finale
   emoji: 🌊
@@ -1512,7 +1533,7 @@
     fail:
       text: Hands drag you back into the water.
       effects:
-        health: -40
+        health: -14
         next: duel
         cause: the flood at the Cornucopia
   - label: Fight in the shallows
@@ -1525,11 +1546,891 @@
       text: You fight like the crowd always hoped you would.
       effects:
         kill: 1
-        crowd: 20
         next: duel
+        sponsor: true
     fail:
       text: Too many of them. You crawl out of the water bleeding.
       effects:
-        health: -45
+        health: -16
         next: duel
         cause: the flood at the Cornucopia
+- id: stream_canteen
+  kind: event
+  place:
+  - stream
+  target: any
+  days:
+  - 2
+  - 7
+  emoji: 🫗
+  text: '{Target} is filling a canteen at the water, back to you.'
+  options:
+  - label: Rush them
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - combat
+    success:
+      text: It's over fast. Their pack is yours.
+      effects:
+        kill: 1
+        supplies: 2
+    fail:
+      text: They hear you coming and swing the canteen like a club. Then a knife.
+      effects:
+        health: -16
+        cause: '{target}, at the stream'
+  - label: Steal their pack while they wash
+    tag: safe
+    roll:
+      base: 55
+      mods:
+      - stealth
+    success:
+      text: You're gone before they turn around.
+      effects:
+        supplies: 3
+    fail:
+      text: They turn around.
+      effects:
+        health: -12
+        cause: '{target}, at the stream'
+  - label: Wait until they leave
+    tag: hide
+    text: They take their time. You drink after.
+    effects: {}
+- id: stream_leeches
+  kind: event
+  place:
+  - stream
+  days:
+  - 2
+  - 8
+  emoji: 🪱
+  text: The pool is clear and deep, and the rocks under the surface are black with leeches.
+  options:
+  - label: Wade in anyway
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - swim
+    success:
+      text: You fill up and pick them off after. Only a few.
+      effects:
+        supplies: 1
+    fail:
+      text: They're everywhere. You lose more blood than you'd like.
+      effects:
+        health: -10
+        cause: leeches and fever
+  - label: Treat a cupful at the edge
+    need:
+      item: iodine
+    tag: safe
+    text: Slow, but safe. You drink your fill.
+    effects:
+      supplies: 1
+  - label: Walk upstream
+    tag: safe
+    roll:
+      base: 65
+      mods:
+      - escape
+    success:
+      text: A cleaner pool
+      a mile up. Worth it.: null
+      effects:
+        supplies: 1
+    fail:
+      text: Someone else had the same idea.
+      effects:
+        health: -10
+        cause: a tribute upstream
+- id: stream_float
+  kind: event
+  place:
+  - stream
+  days:
+  - 2
+  - 8
+  emoji: 🎁
+  text: A silver parachute floats past on the current, still sealed. Someone upstream missed it.
+  options:
+  - label: Swim for it
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - swim
+    success:
+      text: You get to it before the rapids do.
+      effects:
+        sponsor: true
+    fail:
+      text: The rapids get to you first.
+      effects:
+        health: -12
+        cause: the rapids
+  - label: Let it go
+    tag: hide
+    text: It spins away around the bend.
+    effects: {}
+- id: stream_red
+  kind: event
+  place:
+  - stream
+  days:
+  - 3
+  - 8
+  emoji: 🩸
+  text: The water is running red. Something happened upstream, not long ago.
+  options:
+  - label: Follow it up
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - stealth
+    success:
+      text: A dead tribute
+      and their pack. The killer left it.: null
+      effects:
+        gift: true
+        supplies: 1
+    fail:
+      text: The killer hadn't left.
+      effects:
+        health: -16
+        cause: a Career at the stream
+  - label: Drink below the bend
+    tag: safe
+    roll:
+      base: 60
+    success:
+      text: It runs clear again further down.
+      effects:
+        supplies: 1
+    fail:
+      text: You shouldn't have drunk that.
+      effects:
+        health: -8
+        cause: fever from bad water
+  - label: Leave
+    tag: hide
+    text: You don't want to know.
+    effects: {}
+- id: rocks_footsteps
+  kind: event
+  place:
+  - rocks
+  days:
+  - 2
+  - 8
+  emoji: 👣
+  text: Footsteps on the rock right above your hiding place. They stop.
+  options:
+  - label: Hold your breath
+    tag: hide
+    roll:
+      base: 70
+      mods:
+      - stealth
+    success:
+      text: A long minute. Then they move on.
+      effects: {}
+    fail:
+      text: A face looks down into the crack. Then a spear.
+      effects:
+        health: -14
+        cause: a tribute who found your hiding place
+  - label: Strike first
+    tag: bold
+    roll:
+      base: 45
+      mods:
+      - combat
+    success:
+      text: They never saw you.
+      effects:
+        kill: 1
+    fail:
+      text: They saw you.
+      effects:
+        health: -18
+        cause: a tribute in the rocks
+- id: rocks_snake
+  kind: event
+  place:
+  - rocks
+  days:
+  - 2
+  - 8
+  emoji: 🐍
+  text: A snake slides into your crevice and coils up a foot from your hand.
+  options:
+  - label: Stay still
+    tag: hide
+    roll:
+      base: 75
+    success:
+      text: It sleeps. Eventually
+      so do you.: null
+      effects: {}
+    fail:
+      text: It bites. Your hand swells to twice its size.
+      effects:
+        health: -10
+        cause: snakebite
+  - label: Kill it
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - combat
+    success:
+      text: Dinner.
+      effects:
+        supplies: 1
+    fail:
+      text: It's faster than you.
+      effects:
+        health: -10
+        cause: snakebite
+- id: rocks_drip
+  kind: event
+  place:
+  - rocks
+  days:
+  - 2
+  - 8
+  emoji: 💧
+  text: Water drips through a seam in the rock, slow and clean.
+  options:
+  - label: Stay up and collect it
+    tag: safe
+    text: A full canteen by dawn, and no sleep.
+    effects:
+      supplies: 1
+  - label: Sleep
+    tag: hide
+    text: You sleep to the sound of it.
+    effects:
+      health: 8
+- id: rocks_cache
+  kind: event
+  place:
+  - rocks
+  days:
+  - 2
+  - 8
+  emoji: 📦
+  text: Someone wedged a bundle deep in the rocks and never came back for it.
+  options:
+  - label: Pull it out
+    tag: bold
+    roll:
+      base: 65
+    success:
+      text: Nobody was coming back for this.
+      effects:
+        gift: true
+    fail:
+      text: It was wired to a rock. The rock falls on you.
+      effects:
+        health: -14
+        cause: a booby trap
+  - label: Leave it
+    tag: hide
+    text: Things left lying around in this arena are rarely gifts.
+    effects: {}
+- id: rocks_child
+  kind: event
+  place:
+  - rocks
+  target: any
+  days:
+  - 2
+  - 6
+  emoji: 😢
+  text: '{Target} stumbles into your hiding place, crying, and freezes at the sight of you.'
+  options:
+  - label: Let them stay
+    tag: safe
+    roll:
+      base: 60
+    success:
+      text: They share what they have and leave at first light.
+      effects:
+        supplies: 1
+    fail:
+      text: Someone followed them here.
+      effects:
+        health: -14
+        cause: the tribute who followed them
+  - label: Send them away
+    tag: hide
+    text: They go. You don't sleep much.
+    effects: {}
+  - label: Kill them
+    tag: bold
+    roll:
+      base: 75
+      mods:
+      - combat
+    success:
+      text: It's quick. It doesn't feel like winning.
+      effects:
+        kill: 1
+    fail:
+      text: Fear makes people strong.
+      effects:
+        health: -10
+        cause: '{target}, cornered'
+- id: horn_stockpile
+  kind: event
+  place:
+  - horn
+  days:
+  - 2
+  - 7
+  emoji: 🏺
+  text: The Careers' stockpile sits by the horn, unguarded. Too unguarded.
+  options:
+  - label: Grab one thing and run
+    tag: safe
+    roll:
+      base: 60
+      mods:
+      - escape
+    success:
+      text: In and out.
+      effects:
+        gift: true
+    fail:
+      text: A mine goes off two steps behind you.
+      effects:
+        health: -14
+        cause: a mine at the Cornucopia
+  - label: Take everything you can carry
+    tag: bold
+    roll:
+      base: 35
+      mods:
+      - escape
+    success:
+      text: You stagger away loaded down. The Careers are going to be furious.
+      effects:
+        gift: true
+        supplies: 3
+    fail:
+      text: You found the mines.
+      effects:
+        health: -25
+        cause: a mine at the Cornucopia
+  - label: Leave it
+    tag: hide
+    text: Somebody else can find the mines.
+    effects: {}
+- id: horn_lookout
+  kind: event
+  place:
+  - horn
+  target: any
+  days:
+  - 2
+  - 7
+  emoji: 👁️
+  text: '{Target} is on watch at the horn, alone and half asleep.'
+  options:
+  - label: Take them out
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - stealth
+    success:
+      text: They don't wake up.
+      effects:
+        kill: 1
+        sponsor: true
+    fail:
+      text: Half asleep isn't asleep.
+      effects:
+        health: -20
+        cause: '{target}, on watch'
+  - label: Sneak past to the supplies
+    tag: safe
+    roll:
+      base: 60
+      mods:
+      - stealth
+    success:
+      text: You fill your pack under their nose.
+      effects:
+        supplies: 2
+    fail:
+      text: They wake up shouting.
+      effects:
+        health: -14
+        cause: '{target}, on watch'
+  - label: Back off
+    tag: hide
+    text: Not today.
+    effects: {}
+- id: horn_wounded
+  kind: event
+  place:
+  - horn
+  target: any
+  days:
+  - 3
+  - 8
+  emoji: 🥀
+  text: '{Target} lies by the horn, badly hurt, begging for water.'
+  options:
+  - label: Give them water
+    need:
+      supplies: 1
+    tag: safe
+    text: They drink, and thank you, and die. The Capitol weeps. A parachute follows.
+    effects:
+      supplies: -1
+      sponsor: true
+      kill: 1
+  - label: End it
+    tag: bold
+    text: Mercy, of a kind.
+    effects:
+      kill: 1
+  - label: Walk away
+    tag: hide
+    text: Their voice follows you a long way.
+    effects: {}
+- id: horn_brawl
+  kind: event
+  place:
+  - horn
+  days:
+  - 2
+  - 7
+  requires:
+    min_remaining: 5
+  emoji: 🤼
+  text: Three tributes are fighting over a crate at the mouth of the horn.
+  options:
+  - label: Join in
+    tag: bold
+    roll:
+      base: 40
+      mods:
+      - combat
+    success:
+      text: When it's over
+      you're the one standing on the crate.: null
+      effects:
+        kill: 1
+        supplies: 3
+        sponsor: true
+    fail:
+      text: Three against one is bad. Three against you is worse.
+      effects:
+        health: -24
+        cause: the brawl at the horn
+  - label: Wait, then take on the winner
+    tag: safe
+    roll:
+      base: 55
+      mods:
+      - combat
+    success:
+      text: The winner can barely stand. You finish it.
+      effects:
+        kill: 1
+        supplies: 2
+    fail:
+      text: The winner had more left than you thought.
+      effects:
+        health: -18
+        cause: the brawl at the horn
+  - label: Leave them to it
+    tag: hide
+    text: You hear the cannon from a long way off.
+    effects: {}
+- id: horn_mines
+  kind: event
+  place:
+  - horn
+  days:
+  - 2
+  - 8
+  emoji: 💥
+  text: The ground around the horn has been dug up and smoothed over. Mines, or a bluff.
+  options:
+  - label: Cross carefully
+    tag: bold
+    roll:
+      base: 65
+      mods:
+      - escape
+    success:
+      text: It was a bluff. The supplies past it weren't.
+      effects:
+        supplies: 2
+        gift: true
+    fail:
+      text: It wasn't a bluff.
+      effects:
+        health: -22
+        cause: a mine at the Cornucopia
+  - label: Go around
+    tag: safe
+    text: It takes all day. You find nothing.
+    effects: {}
+- id: cameras
+  kind: event
+  place:
+  - open
+  days:
+  - 2
+  - 8
+  emoji: 🎥
+  text: A camera drone drops to eye level and hovers there, waiting.
+  options:
+  - label: Give them a show
+    hint: Talk to your family. Sing. Shout at the sky.
+    tag: bold
+    roll:
+      base: 65
+    success:
+      text: You give them something to remember.
+      effects:
+        sponsor: true
+    fail:
+      text: The drone wasn't the only one watching.
+      effects:
+        health: -12
+        cause: a tribute who saw you showing off
+  - label: Smash it
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - combat
+    success:
+      text: The Capitol loves a little defiance. Someone pays for it.
+      effects:
+        sponsor: true
+    fail:
+      text: The Gamemakers don't.
+      effects:
+        health: -16
+        cause: a Capitol drone
+  - label: Walk on
+    tag: hide
+    text: It follows you for a while, then gives up.
+    effects: {}
+- id: open_spotted
+  kind: event
+  place:
+  - open
+  target: any
+  days:
+  - 2
+  - 8
+  emoji: 🏃
+  text: You've been spotted. {Target} is coming across the meadow at a run.
+  options:
+  - label: Stand and fight
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - combat
+    success:
+      text: In front of every camera in the arena. The Capitol goes wild.
+      effects:
+        kill: 1
+        sponsor: true
+    fail:
+      text: They wanted it more.
+      effects:
+        health: -20
+        cause: '{target}, in the open'
+  - label: Run for the trees
+    tag: safe
+    roll:
+      base: 65
+      mods:
+      - escape
+    success:
+      text: You lose them in the woods.
+      effects: {}
+    fail:
+      text: They catch you at the treeline.
+      effects:
+        health: -12
+        cause: '{target}, in the open'
+- id: open_hail
+  kind: event
+  place:
+  - open
+  days:
+  - 2
+  - 8
+  emoji: 🧊
+  text: Hail the size of eggs, out of a clear sky. There's no cover out here.
+  options:
+  - label: Run for the trees
+    tag: bold
+    roll:
+      base: 55
+      mods:
+      - escape
+    success:
+      text: You make the treeline with only bruises.
+      effects: {}
+    fail:
+      text: You don't make it before it gets bad.
+      effects:
+        health: -14
+        cause: the hailstorm
+  - label: Curl up under your pack
+    tag: hide
+    text: It hurts, but it ends.
+    effects:
+      health: -5
+      cause: the hailstorm
+- id: open_rival
+  kind: event
+  place:
+  - open
+  target: any
+  days:
+  - 2
+  - 7
+  emoji: 🎭
+  text: On the far hill, {target} is playing to the cameras too. Waving, shouting, the whole act.
+  options:
+  - label: Outdo them
+    tag: bold
+    roll:
+      base: 50
+    success:
+      text: The sponsors pick you.
+      effects:
+        sponsor: true
+    fail:
+      text: All that noise draws a crowd. The wrong kind.
+      effects:
+        health: -12
+        cause: a tribute drawn by the noise
+  - label: Sneak up on them
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - stealth
+    success:
+      text: Their last show.
+      effects:
+        kill: 1
+    fail:
+      text: They were watching their back.
+      effects:
+        health: -16
+        cause: '{target}, on the hill'
+  - label: Let them have the cameras
+    tag: hide
+    text: Better them than you.
+    effects: {}
+- id: open_race
+  kind: event
+  place:
+  - open
+  target: any
+  days:
+  - 3
+  - 8
+  emoji: 🪂
+  text: A silver parachute is coming down halfway between you and {target}.
+  options:
+  - label: Race for it
+    tag: bold
+    roll:
+      base: 55
+      mods:
+      - escape
+    success:
+      text: Your fingers close on it first.
+      effects:
+        sponsor: true
+    fail:
+      text: Theirs close on you.
+      effects:
+        health: -16
+        cause: '{target}, over a parachute'
+  - label: Let them have it
+    tag: hide
+    text: They don't even look at you.
+    effects: {}
+- id: ridge_nest
+  kind: event
+  place:
+  - ridge
+  days:
+  - 2
+  - 8
+  emoji: 🪺
+  text: A nest on a ledge below the cliff top, full of eggs.
+  options:
+  - label: Climb down to it
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - escape
+    success:
+      text: Eggs. Real food.
+      effects:
+        supplies: 2
+    fail:
+      text: The ledge crumbles.
+      effects:
+        health: -14
+        cause: a fall from the ridge
+  - label: Leave it
+    tag: hide
+    text: Not worth your neck.
+    effects: {}
+- id: ridge_camp
+  kind: event
+  place:
+  - ridge
+  days:
+  - 3
+  - 8
+  emoji: 🔭
+  text: From the ridge you can see the whole arena, and a camp in the valley below with nobody in it.
+  options:
+  - label: Raid it
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - stealth
+    success:
+      text: You're back on the ridge before they return.
+      effects:
+        supplies: 3
+    fail:
+      text: They hadn't gone far.
+      effects:
+        health: -18
+        cause: tributes in the valley
+  - label: Watch who comes back
+    tag: hide
+    text: Two tributes, and a lot of weapons. Good to know.
+    effects: {}
+- id: nemesis_sighting
+  kind: event
+  place:
+  - stream
+  - ridge
+  - open
+  - horn
+  target: nemesis
+  requires:
+    nemesis: true
+  days:
+  - 2
+  - 4
+  emoji: 🩸
+  text: '{Nemesis} walks past close enough to touch, wiping someone else''s blood off a blade. They haven''t seen
+    you.'
+  options:
+  - label: Stay still
+    tag: hide
+    roll:
+      base: 70
+      mods:
+      - stealth
+    success:
+      text: They walk on. Now you know what you're up against.
+      effects: {}
+    fail:
+      text: They see you. They smile. They cut you once
+      just to remember you by.: null
+      effects:
+        health: -18
+        cause: '{nemesis}'
+  - label: Follow them to their camp
+    tag: bold
+    roll:
+      base: 45
+      mods:
+      - stealth
+    success:
+      text: They leave their camp to hunt. You leave it lighter.
+      effects:
+        gift: true
+        supplies: 2
+    fail:
+      text: They knew you were there the whole time.
+      effects:
+        health: -26
+        cause: '{nemesis}'
+- id: nemesis_clash
+  kind: event
+  place:
+  - stream
+  - open
+  - horn
+  target: nemesis
+  requires:
+    nemesis: true
+  days:
+  - 4
+  - 7
+  emoji: ⚔️
+  text: '{Nemesis} finds you. No more walking past.'
+  options:
+  - label: Fight
+    tag: bold
+    roll:
+      base: 30
+      mods:
+      - combat
+    success:
+      text: The Capitol's favorite killer falls
+      and the Capitol has a new favorite.: null
+      effects:
+        kill: 1
+        sponsor: true
+    fail:
+      text: They're everything the Capitol said they were.
+      effects:
+        health: -30
+        cause: '{nemesis}'
+  - label: Run
+    tag: safe
+    roll:
+      base: 55
+      mods:
+      - escape
+    success:
+      text: You run until your lungs burn. They let you go. For now.
+      effects: {}
+    fail:
+      text: Not fast enough.
+      effects:
+        health: -20
+        cause: '{nemesis}'
+  - label: Throw them your supplies
+    need:
+      supplies: 2
+    tag: hide
+    text: They take it and laugh. You'll be hungry, but you're alive.
+    effects:
+      supplies: -2

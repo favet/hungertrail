@@ -39,12 +39,14 @@
       <h2>How to play</h2>
       <p>You are a tribute. 23 others want you dead. Last one alive wins.</p>
       <ul class="rules">
-        <li><b>❤️ Health</b> — hit zero and you're out.</li>
-        <li><b>🎒 Supplies</b> — days of food and water. You use one every night. Run out and you starve.</li>
-        <li><b>Kit</b> — three slots. Everything you carry does something, all the time. Full? Something has to go.</li>
+        <li><b>❤️ Health</b>: hit zero and you're out.</li>
+        <li><b>🎒 Supplies</b>: days of food and water. You use one every night. Run out and you starve.</li>
+        <li><b>Kit</b>: three slots. Everything you carry does something, all the time. Tap the medkit to use it.</li>
+        <li><b>Every morning, choose where to go.</b> Each place gives you something and risks something, and deals you what happens there.</li>
         <li><b>Every choice shows its stakes:</b> the odds, <span class="win">✓</span> what you get if it works, <span class="lose">✗</span> what it costs if it doesn't. <span class="lose">☠️</span> means it could kill you.</li>
-        <li><b>🎥 the crowd likes it.</b> Thrill the Capitol and sponsors send gifts. Bore them and Caesar will warn you. Then the Gamemakers step in.</li>
-        <li><b>The final duel</b> weighs everything you carry and did. A good run walks in with an edge.</li>
+        <li><b>The edge of the arena is quiet.</b> Stay there too long and the Gamemakers come for you. From day 6 it's gone.</li>
+        <li><b>One Career is the Capitol's favorite killer.</b> Same one for everyone today. You'll meet.</li>
+        <li><b>The final duel</b> is best of three. Your kit, health and kills set the odds.</li>
       </ul>
       <p>One ranked run a day. Practice as much as you like.</p>
       <button class="big back">Back</button>
@@ -106,6 +108,7 @@
     </section>
 
     <div id="toast" hidden></div>
+    <div id="slotpop" hidden></div>
   </div>
 
   <script id="config" type="application/json">{{ config | tojson }}</script>

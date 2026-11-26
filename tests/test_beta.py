@@ -6,10 +6,10 @@ from fastapi.testclient import TestClient
 from hungertrail.app import app
 from hungertrail.beta import engine, lore
 from hungertrail.beta.bots import BOTS, play
-from hungertrail.beta.engine import CAMP, DRAFT, DUEL, SWAP, Game, cards, new_setup, replay
+from hungertrail.beta.engine import DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SWAP, USE, Game, cards, new_setup, replay
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
-KNOWN_EFFECTS = {"health", "supplies", "crowd", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies"}
+KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies"}
 KNOWN_NEEDS = {"item", "any", "perk", "ally", "supplies"}
 
 
@@ -47,10 +47,12 @@ def test_cards_are_valid():
     for cid, c in cards().items():
         assert c["kind"] in ("event", "gamemaker", "feast", "betrayal", "finale"), cid
         if c["kind"] == "event":
+            assert c.get("place") and set(c["place"]) <= set(PLACE_KEYS[:5]), cid
             free = [o for o in c["options"] if not o.get("need")]
             assert len(free) >= 2 or (len(free) == 1 and len(c["options"]) >= 2), cid
         if c.get("target"):
-            assert "{Target}" in c["text"] or "{target}" in c["text"], cid
+            want = ("{Nemesis}", "{nemesis}") if c["target"] == "nemesis" else ("{Target}", "{target}")
+            assert any(w in c["text"] for w in want), cid
         for o in c["options"]:
             assert set(o.get("need") or {}) <= KNOWN_NEEDS, cid
             branches = [o.get("success"), o.get("fail")] if "roll" in o else [o]
@@ -77,7 +79,7 @@ def test_draft_gives_kit_and_ends_bloodbath():
     assert g.card == DRAFT
     run = len(g.arena.layout)
     g.choose(run)  # run for the trees
-    assert g.card == CAMP and g.kit == [] and "🌲" in g.days[1]
+    assert g.card == PLACES and g.day == 2 and g.kit == [] and "🌲" in g.days[1]
 
 
 def test_full_kit_asks_what_to_drop():
@@ -88,7 +90,7 @@ def test_full_kit_asks_what_to_drop():
     g._gain("bow")
     g._delta(snap)
     g._advance(("night",))
-    assert g.card == SWAP
+    assert g.card == SWAP and g.day == 2
     labels = [o["label"] for o in g.options()]
     assert labels[-1] == "Leave the bow" and "Drop the knife" in labels
     g.choose(0)  # drop the knife
@@ -106,29 +108,87 @@ def test_kills_take_the_named_tribute():
     assert g.fallen_today[-1] not in g.pool
 
 
-def test_duel_lists_edges_and_ends_the_run():
+def test_duel_is_best_of_three_with_edges():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
     g.kit = ["bow", "rope"]
-    g.pool = g.pool[:1]
     g.allies = []
     g._start_duel()
-    assert g.card == DUEL
+    assert g.card == DUEL and g.opponent_id == g.nemesis and g.remaining == 2
     text = g.log[-1]["text"]
-    assert "your bow" in text and "the high ground" in text
-    fight, wait = g.options()
-    assert fight["chance"] > engine.DUEL_BASE and "Your bow +15" in fight["hint"]
-    g.choose(0)
-    assert g.over
+    assert "your bow" in text and "the high ground" in text and "kills" in text
+    press, hold = g.options()
+    assert "Your bow +15" in press["hint"] and "The high ground +15" in hold["hint"]
+    for _ in range(3):
+        if g.over:
+            break
+        g.choose(0)
+    assert g.over and (g.won or g.cause.endswith("in the final duel"))
+    assert g.duel_wins + g.duel_losses <= 3
 
 
-def test_bored_crowd_brings_the_gamemakers():
+def test_places_are_seeded_and_the_edge_closes():
+    g = Game(5, 9, SETUP)
+    a = g.arena
+    assert all(len(a.offers[d]) == 3 for d in range(2, 8))
+    assert a.offers == Game(5, 77, new_setup(3, "X", [])).arena.offers
+    assert all(not set(a.offers[d]) & set(EDGE) for d in range(6, 8))
+    assert "feast" in a.offers[a.feast_day]
+
+
+def test_edge_brings_the_gamemakers():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
-    g.crowd = engine.RESTLESS - 30
-    g.choose(0)  # rest: no bold move, Caesar warns
-    assert g.warned and any(e["kind"] == "caesar" and "restless" in e["text"].lower() for e in g.log)
+    for _ in range(4):
+        if g.card != PLACES:
+            break
+        edge = [o for o in g.options() if o["place"] in EDGE]
+        if not edge:
+            g.choose(g.options()[0]["index"], 1)
+        else:
+            g.choose(edge[0]["index"], 1)
+        while not g.over and g.card not in (PLACES,) and not g.card.startswith("gm_"):
+            g.choose(g.options()[0]["index"], 1)
+        if g.card.startswith("gm_"):
+            break
+    if not g.over:
+        assert g.card.startswith("gm_") or g.edge_streak <= 1
+    assert any("Gamemakers" in e["text"] for e in g.log if e["kind"] == "caesar")
 
+
+def test_rolls_are_logged_for_the_reveal():
+    g = Game(5, 9, SETUP)
+    g.choose(0)  # a grab
+    roll = next(e for e in g.log if e["kind"] == "roll")
+    assert roll["chance"] and 1 <= roll["roll"] <= 100 and roll["ok"] == (roll["roll"] <= roll["chance"])
+
+
+def test_medkit_by_tapping_it():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    with pytest.raises(ValueError):
+        g.choose(USE)
+    g.kit = ["medkit"]
+    g.health = 30
+    g.choose(USE)
+    assert g.health == 70 and "medkit" not in g.kit and g.card == PLACES
+
+
+def test_nemesis_survives_to_the_end_unless_you_kill_them():
+    for seed in range(40):
+        g = Game(seed, 3, SETUP)
+        assert g.nemesis not in g.arena.death_order and g.nemesis in g.pool
+        for d in range(1, 8):
+            g._scheduled_deaths(d)
+        assert g.nemesis in g.pool
+
+
+def test_death_recap():
+    g = Game(5, 9, SETUP)
+    g.health = 1
+    g.choose(5)  # a horn grab at 1 health
+    if not g.won and g.over:
+        assert g.recap and "1 health" in g.recap
 
 client = TestClient(app)
 

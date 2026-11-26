@@ -8,7 +8,7 @@ import sys
 from collections import Counter
 
 from . import lore
-from .engine import CAMP, DRAFT, DUEL, SWAP, Game, new_setup
+from .engine import DRAFT, DUEL, PLACES, SWAP, USE, Game, new_setup
 
 VALUE = {"trident": 9, "bow": 9, "spear": 7, "axe": 6, "rope": 6, "medkit": 5, "knife": 5, "sleeping_bag": 4, "iodine": 4}
 
@@ -42,8 +42,9 @@ def brute(g: Game, r: random.Random):
 
 def smart(g: Game, r: random.Random):
     """Reads the stakes on screen the way an attentive player would."""
+    if g.can_use_medkit() and g.health < 45:
+        return USE, None
     opts = g.options()
-    by = {o["label"]: o for o in opts}
     if g.card == DRAFT:
         grabs = [o for o in opts if o["chance"] is not None and (o["chance"] >= 55 or g.grabs == 0)]
         if grabs and g.health >= 60:
@@ -59,22 +60,28 @@ def smart(g: Game, r: random.Random):
         return opts[-1]["index"], None
     if g.card == DUEL:
         return _best(opts, lambda o: o["chance"])["index"], None
-    if g.card == CAMP:
-        if "Use the medkit" in by and g.health < 55:
-            return by["Use the medkit"]["index"], None
+    if g.card == PLACES:
+        by = {o["place"]: o for o in opts}
+        safe_from_gm = {k: o for k, o in by.items() if not any("Gamemakers" in x for x in o["lose"])}
+        hunt = r.choice([1, 2, 2, 3])
         if g.health < 45:
-            return by["Rest"]["index"], None
+            for k in ("rocks", "stream", "open"):
+                if k in by and (k in safe_from_gm or g.health < 30):
+                    return by[k]["index"], hunt
         if g.supplies <= 1:
-            for k in ("Hunt", "Set snares", "Forage"):
-                if k in by:
-                    return by[k]["index"], r.choice([1, 2, 2, 3])
-        if g.crowd < 10 or g.health >= 80:
-            return by["Play to the cameras"]["index"], None
-        return by["Rest"]["index"], None
+            for k in ("stream", "ridge"):
+                if k in safe_from_gm:
+                    return by[k]["index"], hunt
+        armed = any(w in g.kit for w in lore.WEAPONS)
+        prefs = ("feast", "horn", "open", "stream") if armed and g.health >= 70 else ("feast", "open", "stream", "ridge", "horn")
+        for k in prefs:
+            if k in safe_from_gm:
+                return by[k]["index"], hunt
+        return opts[0]["index"], hunt
 
     def value(o):
         c = o["chance"] if o["chance"] is not None else 100
-        v = c + (8 if o["crowd"] else 0)
+        v = c
         if o["deadly"]:
             v -= 40
         v -= 5 * sum(1 for x in o["lose"] if x.startswith("❤️"))
@@ -109,7 +116,8 @@ def report(n: int = 2000) -> None:
         causes = Counter(g.cause for g in games if not g.won).most_common(5)
         gm = sum(any(c.startswith("gm_") for c in g.used) for g in games) / n
         duel = sum(g.opponent is not None for g in games) / n
-        print(f"{name:7} win {wins:5.1%}  place {place:4.1f}  steps {steps:4.1f}  gamemakers {gm:4.0%}  duel {duel:4.0%}")
+        nem = sum(g.opponent_id == g.nemesis for g in games) / n
+        print(f"{name:7} win {wins:5.1%}  place {place:4.1f}  steps {steps:4.1f}  gamemakers {gm:4.0%}  duel {duel:4.0%} (vs nemesis {nem:4.0%})")
         print("        deaths:", ", ".join(f"{c} {k / n:.0%}" for c, k in causes))
 
 

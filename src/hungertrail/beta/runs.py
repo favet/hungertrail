@@ -17,7 +17,7 @@ from ..runs import RunError, _clean_name, ordinal
 from . import lore
 from .engine import Game, new_setup, replay
 
-VERSION = "b1"
+VERSION = "b2"
 
 
 def _mac(settings: Settings, body: bytes) -> str:
@@ -118,6 +118,7 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
         "kills": game.kills,
         "day": game.day,
         "cause": game.cause,
+        "recap": game.recap,
         "score": game.score(),
         "emoji": game.emoji_row(),
         "district": game.district,

@@ -154,10 +154,25 @@ function enterGame(v) {
   view = v;
   shown = 0;
   blocks = {};
+  lastStatus = null;
+  $("#slotpop").hidden = true;
   $("#log").replaceChildren();
   show("game");
   render(true);
 }
+
+// Tap a kit slot: what it does, and a Use button when it can be used right now.
+function slotInfo(k, s) {
+  const pop = $("#slotpop");
+  const usable = s.can_use === k.id && !busy;
+  pop.replaceChildren(
+    el("p", {}, el("b", { text: `${k.emoji} ${k.name}` }), " " + k.desc),
+    usable ? el("button", { class: "primary", text: "Use it", onclick: () => { pop.hidden = true; send(99, null); } }) : null,
+    el("button", { text: "Close", onclick: () => (pop.hidden = true) }));
+  pop.hidden = false;
+}
+
+let lastStatus = null;
 
 function statusBar(s) {
   const hw = s.health_word.replace(" ", "").toLowerCase();
@@ -165,22 +180,34 @@ function statusBar(s) {
   for (let i = 0; i < s.slots; i++) {
     const k = s.kit[i];
     slots.push(k
-      ? el("button", { class: "slot", title: k.name, onclick: () => toast(`${k.emoji} ${k.name}: ${k.desc}`) }, k.emoji)
+      ? el("button", { class: "slot" + (s.can_use === k.id ? " usable" : ""), title: k.name, onclick: () => slotInfo(k, view.status) }, k.emoji)
       : el("span", { class: "slot empty", title: "empty slot" }, "·"));
   }
   const sup = s.supplies === 0 ? "none" : s.supplies === 1 ? "1 day" : `${s.supplies} days`;
+  const prev = lastStatus;
+  const hpBar = el("span", { class: "hbar" });
+  const from = prev ? Math.max(0, prev.health) : Math.max(0, s.health);
+  const to = Math.max(0, s.health);
+  // A health loss leaves a red ghost of what you lost, which then drains away.
+  if (to < from) hpBar.append(el("i", { class: "ghost", style: `width:${from}%` }));
+  hpBar.append(el("i", { class: "fill", style: `width:${to}%` }));
+  const hp = el("span", { class: "stat health h-" + hw }, "❤️ ", el("b", { text: s.health_word }), hpBar);
+  const food = el("span", { class: "stat food" + (s.supplies === 0 ? " warn" : s.supplies === 1 ? " low" : "") }, "🎒 ", el("b", { text: sup }));
+  if (prev) {
+    if (s.health !== prev.health) hp.classList.add("pulse", s.health > prev.health ? "up" : "down");
+    if (s.supplies !== prev.supplies) food.classList.add("pulse", s.supplies > prev.supplies ? "up" : "down");
+  }
+  if (to < from) requestAnimationFrame(() => setTimeout(() => { const g = $(".ghost", hpBar); if (g) g.style.width = to + "%"; }, 450));
+  lastStatus = s;
+  const who = [s.kills ? `⚔️ ${s.kills}` : "", s.allies.length ? "🤝 " + s.allies.join(", ") : ""].filter(Boolean).join(" · ");
+  const duel = s.duel ? ` · Duel ${s.duel[0]}–${s.duel[1]}` : "";
   return [
     el("div", { class: "row1" },
-      el("span", { text: `Day ${s.day} · ${s.remaining} left` }),
-      el("span", { class: "kills", text: s.kills ? `⚔️ ${s.kills}` : "" }),
+      el("span", { class: "when", text: `Day ${s.day} · ${s.remaining} left${duel}` }),
+      el("span", { class: "who", text: who }),
       el("button", { class: "mute", title: "Sound", text: Sound.on() ? "🔊" : "🔇", onclick: (e) => { Sound.toggle(); e.target.textContent = Sound.on() ? "🔊" : "🔇"; } })),
-    el("div", { class: "row2" },
-      el("span", { class: "stat health h-" + hw }, "❤️ ", el("b", { text: s.health_word }),
-        el("span", { class: "hbar" }, el("i", { style: `width:${Math.max(0, s.health)}%` }))),
-      el("span", { class: "stat" + (s.supplies === 0 ? " warn" : s.supplies === 1 ? " low" : "") }, "🎒 ", el("b", { text: sup })),
-      el("span", { class: "kit" }, ...slots)),
-    s.allies.length ? el("div", { class: "row3 dim", text: "With " + s.allies.join(", ") }) : null,
-  ].filter(Boolean);
+    el("div", { class: "row2" }, hp, food, el("span", { class: "kit" }, ...slots)),
+  ];
 }
 
 function dayBlock(day) {
@@ -225,15 +252,32 @@ function render(first = false) {
   $("#status").replaceChildren(...statusBar(v.status));
   const fresh = v.log.slice(shown);
   let delay = 0;
+  let tone = null;
   for (const entry of fresh) {
     const b = dayBlock(entry.day);
-    const text = entry.kind === "choice" ? "> " + entry.text : entry.text;
-    const node = el("p", { class: "entry " + entry.kind, text });
-    if (entry.kind === "choice") { b.choices.push(entry.text); updateSummary(entry.day); }
-    if (entry.kind === "delta") { b.deltas.push(entry.text); updateSummary(entry.day); }
+    let node;
+    if (entry.kind === "roll") {
+      // The reveal: the roll against the odds, big and coloured, right under your choice.
+      tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
+      const head = entry.ok ? "✓ MADE IT" : entry.near ? "✗ SO CLOSE" : "✗ MISSED";
+      node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: ` ${entry.chance}% · rolled ${entry.roll}` }));
+      if (!first && navigator.vibrate) setTimeout(() => navigator.vibrate(entry.ok ? 15 : [30, 40, 30]), delay);
+    } else {
+      const text = entry.kind === "choice" ? "> " + entry.text : entry.text;
+      node = el("p", { class: "entry " + entry.kind, text });
+    }
+    if (entry.kind === "choice") { tone = null; b.choices.push(entry.text); updateSummary(entry.day); }
+    if (entry.kind === "delta") {
+      const gain = /[+]/.test(entry.text) && !/−/.test(entry.text);
+      const loss = /−/.test(entry.text) && !/[+]/.test(entry.text);
+      node.classList.add(gain ? "gain" : loss ? "loss" : "mixed");
+      if (tone) node.classList.add("after-" + tone);
+      tone = null;
+      b.deltas.push(entry.text); updateSummary(entry.day);
+    }
     if (!first) {
       node.style.animationDelay = delay + "ms";
-      delay += entry.kind === "choice" ? 60 : entry.kind === "delta" ? 120 : 260;
+      delay += entry.kind === "choice" ? 50 : entry.kind === "roll" ? 140 : entry.kind === "delta" ? 110 : 200;
       if (entry.kind === "cannon" || entry.kind === "death") setTimeout(() => { Sound.boom(); document.body.classList.add("shake"); setTimeout(() => document.body.classList.remove("shake"), 500); }, delay);
     } else node.classList.add("instant");
     b.body.append(node);
@@ -247,30 +291,57 @@ function render(first = false) {
 
   const box = $("#options");
   box.replaceChildren();
+  box.classList.toggle("draft", v.card === "draft");
   if (v.over) {
     box.append(el("button", { class: "big primary appear", style: `animation-delay:${delay + 300}ms`, text: v.result.won ? "Claim your crown" : "See how you did", onclick: () => showResults(v) }));
     return;
   }
-  v.options.forEach((o, i) => box.append(optionButton(o, i, delay)));
-  if (v.card === "draft") {
+  v.options.forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
+  if (v.card === "draft" && v.status.day === 1 && !v.log.some((e) => e.kind === "roll")) {
     box.append(el("p", { class: "legend appear", style: `animation-delay:${delay + 300}ms` },
-      el("span", { class: "win", text: "✓" }), " if it works  ", el("span", { class: "lose", text: "✗" }), " if it doesn't  ☠️ could kill you  🎥 the crowd loves it"));
+      el("span", { class: "win", text: "✓" }), " if it works  ", el("span", { class: "lose", text: "✗" }), " if it doesn't  ☠️ could kill you"));
   }
+  animating = delay > 0 ? setTimeout(() => (animating = 0), delay + 400) : 0;
 }
 
-function optionButton(o, i, delay) {
+// A tap on the story while it's still appearing shows it all at once.
+let animating = 0;
+function skipAnimation() {
+  if (!animating) return;
+  clearTimeout(animating);
+  animating = 0;
+  $$("#log .entry, #options .appear").forEach((n) => (n.style.animationDelay = "0ms"));
+  const log = $("#log");
+  log.scrollTo({ top: log.scrollHeight });
+}
+
+function optionButton(o, i, delay, card) {
   const stakes = el("span", { class: "stakes" });
-  if (o.chance != null) {
+  if (o.place) {
+    // Places show what they're for and what they risk, not odds: the odds come with the event.
+    o.win.forEach((w) => stakes.append(el("span", { class: "win", text: w })));
+    o.lose.forEach((w) => stakes.append(el("span", { class: "lose" + (w.includes("Gamemakers") ? " deadly" : ""), text: w })));
+  } else if (o.chance != null) {
     stakes.append(el("span", { class: "win", text: "✓ " + (o.win.length ? o.win.join(" ") : "you're fine") }));
     stakes.append(el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + (o.lose.length ? o.lose.join(" ") : "nothing lost") }));
   } else if (o.win.length) {
     stakes.append(el("span", { class: "win", text: "→ " + o.win.join(" ") }));
   }
-  return el("button", { class: "option appear", style: `animation-delay:${delay + i * 70}ms`, onclick: () => pickOption(o) },
+  if (card === "draft" && o.chance != null) {
+    // Compact two-column grab buttons, so the Cornucopia and the story stay on screen.
+    return el("button", { class: "option grab appear", style: `animation-delay:${delay + i * 40}ms`, onclick: () => pickOption(o) },
+      el("span", { class: "label" },
+        el("span", { class: "ltext", text: o.win[0] }),
+        el("small", { class: "hint", text: o.hint.split(". ").slice(1).join(". ") }),
+        el("span", { class: "stakes" }, el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + o.lose.join(" ") }))),
+      el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" }));
+  }
+  const hint = o.hint;
+  return el("button", { class: "option appear" + (o.place ? " place" : ""), style: `animation-delay:${delay + i * 60}ms`, onclick: () => pickOption(o) },
     el("span", { class: "key", text: i + 1 }),
     el("span", { class: "label" },
-      el("span", { class: "ltext" }, o.label, o.crowd ? el("span", { class: "cam", title: "The crowd loves it", text: " 🎥" }) : null),
-      o.hint ? el("small", { text: o.hint }) : null,
+      el("span", { class: "ltext", text: o.label }),
+      hint ? el("small", { class: "hint", text: hint }) : null,
       stakes.childNodes.length ? stakes : null),
     o.chance != null ? el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" }) : null);
 }
@@ -363,7 +434,7 @@ function showResults(v) {
   const r = v.result;
   const art = el("div", { class: "scene" });
   Art.render(art, r.won ? "victory" : "tomb", v.number);
-  $("#card").replaceChildren(
+  $("#card").replaceChildren(...[
     art,
     el("p", { class: "kicker", text: v.mode === "daily" ? `Hunger Trail Beta #${v.number} · District ${r.district}` : `Practice · District ${r.district}` }),
     el("h2", { class: "place" + (r.won ? " won" : ""), text: r.won ? "VICTOR" : r.placement_text }),
@@ -373,6 +444,8 @@ function showResults(v) {
       el("span", {}, "Day ", el("b", { text: r.day })),
       el("span", {}, el("b", { text: r.score.toLocaleString() }), " pts")),
     el("p", { class: "cause", text: r.won ? "Won the Hunger Games." : "Killed by " + r.cause + "." }),
+    !r.won && r.recap ? el("p", { class: "recap dim", text: r.recap }) : null,
+  ].filter(Boolean)
   );
   const canSubmit = v.mode === "daily" && !store.get("submitted." + v.date);
   $("#submit-box").hidden = !canSubmit;
@@ -463,6 +536,7 @@ $("#btn-board").onclick = openBoard;
 $("#btn-results-board").onclick = openBoard;
 $("#btn-help").onclick = () => show("help");
 $("#btn-start").onclick = startRun;
+$("#log").addEventListener("pointerdown", skipAnimation);
 $("#btn-share").onclick = share;
 $("#btn-submit").onclick = submitScore;
 $("#nickname").addEventListener("keydown", (e) => { if (e.key === "Enter") submitScore(); });

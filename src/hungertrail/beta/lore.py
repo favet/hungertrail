@@ -7,13 +7,13 @@ from ..game.lore import CAPITOL, DEFAULT_NAMES, DISTRICTS, GAMES, HORN, HOST  # 
 
 # One small perk per district, from its industry. Each one names the roll or rule it changes.
 PERKS = {
-    1: ("Pampered", "The Capitol already loves you. Sponsors come sooner."),
+    1: ("Pampered", "The Capitol already loves you. +20 on sponsor gifts out in the open."),
     2: ("Trained", "+10 in every fight."),
-    3: ("Tinkerer", "You can set snares without rope, and they catch more."),
+    3: ("Tinkerer", "You can set snares on the ridge without rope, and they catch more."),
     4: ("Fisher", "+30 in the water."),
     5: ("Quick", "+10 when running or climbing."),
     6: ("Sprinter", "+10 on every grab at the bloodbath."),
-    7: ("Woodsman", "Rest heals twice as much."),
+    7: ("Woodsman", "Hiding heals twice as much."),
     8: ("Unseen", "+15 when sneaking."),
     9: ("Stocked", "Start with 2 extra days of supplies."),
     10: ("Herder", "Hunting brings back an extra day of food."),
@@ -34,9 +34,9 @@ ITEMS = {
     "axe": ("axe", "🪓", "+12 in fights. Chops through anything."),
     "bow": ("bow", "🏹", "+15 in fights. Lets you hunt."),
     "trident": ("trident", "🔱", "+20 in fights. Lets you hunt and fish."),
-    "rope": ("rope", "🪢", "+10 when climbing or running. Lets you set snares."),
-    "sleeping_bag": ("sleeping bag", "🛏️", "Rest heals twice as much. Keeps out the cold."),
-    "medkit": ("medkit", "🩹", "Use it once to heal 40."),
+    "rope": ("rope", "🪢", "+10 when climbing or running. Lets you set snares on the ridge."),
+    "sleeping_bag": ("sleeping bag", "🛏️", "Hiding heals 15 more. Keeps out the cold."),
+    "medkit": ("medkit", "🩹", "Tap it to use it: heals 40, once."),
     "iodine": ("iodine", "🧪", "+20 when foraging. Makes any water safe."),
 }
 WEAPONS = {"knife": 8, "spear": 12, "axe": 12, "bow": 15, "trident": 20}

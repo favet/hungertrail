@@ -34,8 +34,10 @@ On Windows, set `PYTHONIOENCODING=utf-8` before running scripts that print emoji
 ## Balance
 
 Beta: `uv run python -m hungertrail.beta.bots` (add `--districts` for win rate per district).
-Beta targets for now: smart about 30%, random about 15%, hider under 5%. `DAMAGE` and `DUEL_BASE`
-in `beta/engine.py` are the main dials.
+Beta targets for now: smart about 30%, random about 10-15%, hider under 5%, and no single place
+much better than the smart bot. `DAMAGE`, `DUEL_BASE`, `OPEN_GIFT` and `HORN_LOOT` in
+`beta/engine.py` are the main dials. Beta event cards need a `place`; the header of
+`beta/cards.yaml` documents the schema.
 
 After changing odds, damage or content, run the bots. Current targets: smart bot wins about 15-20%,
 random about 10%, the pure hider under 1%, about 10-16 decisions per run. `DAMAGE` in `engine.py`

@@ -37,8 +37,31 @@ reasoning are in the conversation of 2026-11-25; the decisions:
 - The final duel lists your edges (weapon, health, kills, rope, supplies, crowd); they set the odds.
 - Kills take the tribute the card names. The log folds finished days to one line.
 
-Beta 2 (next, if beta 1 tests well): the daily move (inner/outer loop, camp merged in), arena
-themes as rule changes, a daily nemesis. Beta 3: marks across days, titles, the share grid.
+## Beta 2 (2026-11-26): replaces beta 1 on beta.hungertrail.com
+
+Playtest of beta 1: the layout jumped around, and camp was a dead end (bots: 44% of all decisions
+were the camp menu, 39% of those offered nothing you needed, and "play to the cameras" paid off
+visibly 4% of the time). Rolls weren't shown, so wins and losses didn't land. Decisions:
+
+- Camp is gone. Each morning you choose where to go: 3 of 5 places (stream, rocks, ridge, horn,
+  out in the open), picked by the daily seed. Each place does one thing (water, rest, food, loot,
+  sponsors) and deals an event from its own stack. The place menu shows icons, not odds.
+- Night runs itself. Hiding in the rocks heals 25 but costs a day's supplies, and still draws a
+  (quiet) card.
+- The hidden crowd is cut. Sponsors pay only through options that say 🎁 sponsor. The Gamemakers
+  come for two days running at the edge (rocks, ridge), or any day there from day 5; Caesar says
+  so the night before. The edge closes on day 6; the flood on day 8 forces the duel.
+- A nemesis: one named Career, the same for everyone today. Their kills show in the sky, they
+  cross your path twice, and they're the final opponent if alive (your ally comes first).
+- The duel is best of three rounds (press or hold); edges and health set each round's odds.
+- Items are used by tapping them (the medkit). Death screen says what killed you and the bet you took.
+- Every roll you choose is shown under your choice (made it, so close, missed), the delta line is
+  green or red, and the stat that changed pulses. Status bar and options never change size.
+- Bot checks: no place dominates (always-stream, always-ridge, always-open all within 3 points of
+  the smart bot; always-horn is the risky one at 19%); no ordinary event is seen in more than 20%
+  of runs. Supplies drive the stream choice but rarely kill (starvation 4-8% of deaths).
+
+Deferred to beta 2.5: arena themes as rule changes. Beta 3: marks across days, titles.
 
 ## Design answers
 
