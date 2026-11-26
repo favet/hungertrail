@@ -18,7 +18,7 @@ from . import lore
 from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
-VERSION = "b6"  # b5: stars and sponsors, hunger that escalates, the seeded day plan and finales
+VERSION = "b6"  # b6: the nemesis arc (wounds, study, last fight), softer damage, food cap, honest chips
 
 
 def _mac(settings: Settings, body: bytes) -> str:
