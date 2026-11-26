@@ -262,11 +262,14 @@ class Game:
         elif self.card == SWAP:
             dest = self._resolve_swap(index)
         elif self.card == DUEL:
-            self._resolve_duel(index)
-            dest = ()
+            dest = ("round", self._resolve_duel(index))
         else:
             dest = self._resolve_card(index)
         self._delta(snap)
+        if dest and dest[0] == "round":
+            if dest[1]:
+                self._say(dest[1], "prompt")  # the next round, after this round's result
+            return
         self._advance(dest)
 
     def _use_medkit(self) -> None:
@@ -774,7 +777,7 @@ class Game:
             out.append(self._opt(i, label, hint, self._duel_chance(how), tag, win, lose))
         return out
 
-    def _resolve_duel(self, index: int) -> None:
+    def _resolve_duel(self, index: int) -> str | None:
         how = ("press", "hold")[index]
         _, ok, near = self._reveal(self._duel_chance(how))
         if ok:
@@ -787,7 +790,7 @@ class Game:
             self._say(("Close. " if near else "") + self._pick("They're faster than you.", "You slip on the wet gold."), "result")
             self._hurt(dmg, f"{self.opponent}, in the final duel")
             if self.over:
-                return
+                return None
         if self.duel_wins == 2:
             self._say(self._pick("It's over. The trumpets sound.", "They fall. You don't."), "result")
             if self.opponent_id in self.allies:
@@ -800,7 +803,8 @@ class Game:
             self._die(f"{self.opponent}, in the final duel")
         else:
             rnd = self.duel_wins + self.duel_losses + 1
-            self._say(f"Round {rnd} of 3. You {self.duel_wins}, {self.opponent} {self.duel_losses}. {self._edge_text()}", "prompt")
+            return f"Round {rnd} of 3. You {self.duel_wins}, {self.opponent} {self.duel_losses}. {self._edge_text()}"
+        return None
 
     # ------------------------------------------------------------------ effects
     def _apply(self, e: dict, card: dict, near: bool = False) -> str | None:
