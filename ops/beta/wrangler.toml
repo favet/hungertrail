@@ -1,0 +1,7 @@
+# beta.hungertrail.com: forwards to the same Render app, marked as beta.
+# The custom domain creates its own DNS record and certificate. Deploy: npx wrangler deploy
+name = "hungertrail-beta"
+main = "index.js"
+compatibility_date = "2025-01-01"
+workers_dev = false
+routes = [{ pattern = "beta.hungertrail.com", custom_domain = true }]

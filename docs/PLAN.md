@@ -20,6 +20,26 @@ after launch at favet's request; bots and phone-browser walkthroughs stood in fo
 - Deferred: share image (Open Graph card), tombstones with other players' epitaphs, analytics,
   more arena types, sound beyond the cannon.
 
+## Beta 1 (2026-11-26): beta.hungertrail.com
+
+After the first playtests (runs felt the same, odds were confusing, favor and heat went unnoticed),
+beta 1 rebuilds the run around a small screen and visible stakes. The full critique and the
+reasoning are in the conversation of 2026-11-25; the decisions:
+
+- Three stats on screen only: health, supplies (food and water merged, in days), a 3-slot kit.
+- Bloodbath draft: seeded loot around the Cornucopia; the closer, the better and deadlier. Two grabs.
+- Items have lasting effects. A full kit means choosing what to drop.
+- Every option shows its odds, what you win and what you lose; ☠️ marks options that could kill.
+- Near misses: a fail within 10 points halves the damage.
+- Favor and heat are merged into a hidden crowd. Bold moves (🎥) bring sponsor gifts at once;
+  hiding draws Caesar's warning at night, then the Gamemakers.
+- Districts give a perk instead of a score multiplier (bots showed the perks balance).
+- The final duel lists your edges (weapon, health, kills, rope, supplies, crowd); they set the odds.
+- Kills take the tribute the card names. The log folds finished days to one line.
+
+Beta 2 (next, if beta 1 tests well): the daily move (inner/outer loop, camp merged in), arena
+themes as rule changes, a daily nemesis. Beta 3: marks across days, titles, the share grid.
+
 ## Design answers
 
 ### 1. What is one run?

@@ -26,8 +26,16 @@ On Windows, set `PYTHONIOENCODING=utf-8` before running scripts that print emoji
 - `src/hungertrail/leaderboard.py`: SQLite locally; in production a Cloudflare Worker + D1
   (`ops/leaderboard`), because Render's free disk is wiped on deploy.
 - `src/hungertrail/static/`: vanilla JS front end, phone-first. `art.js` draws the pixel art.
+- `src/hungertrail/beta/`: the beta game served on beta.hungertrail.com (and `/beta` locally). Its
+  own engine, cards, bots and run tokens, so beta changes never touch live runs. Front end:
+  `templates/beta.html`, `static/beta/`. API under `/api/beta/`. Its leaderboard is a local SQLite
+  file that resets on deploy.
 
 ## Balance
+
+Beta: `uv run python -m hungertrail.beta.bots` (add `--districts` for win rate per district).
+Beta targets for now: smart about 30%, random about 15%, hider under 5%. `DAMAGE` and `DUEL_BASE`
+in `beta/engine.py` are the main dials.
 
 After changing odds, damage or content, run the bots. Current targets: smart bot wins about 15-20%,
 random about 10%, the pure hider under 1%, about 10-16 decisions per run. `DAMAGE` in `engine.py`
@@ -42,6 +50,8 @@ is the global lethality dial.
 - `ops/leaderboard`: Cloudflare Worker + D1. Deploy with `npx wrangler deploy` from that folder.
   The Worker trusts the first key that registers; the app registers on startup and `/healthz`
   reports `"leaderboard": "remote"` when it worked.
+- `ops/beta`: Cloudflare Worker on beta.hungertrail.com that forwards to the Render app with
+  `x-ht-site: beta`. Deploy with `npx wrangler deploy` from that folder.
 - DNS for hungertrail.com is on Cloudflare (DNS only) pointing at `hungertrail.onrender.com`.
 - Runs are replayed from their choices, so changing cards, odds or engine rules changes runs that
   are already in progress. Ship content and balance changes near midnight Pacific when possible.

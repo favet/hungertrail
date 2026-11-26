@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f0a">
+  <meta name="robots" content="noindex">
+  <title>Hunger Trail β</title>
+  <meta name="description" content="The Hunger Trail beta. 24 tributes. One arena. Five minutes.">
+  <meta property="og:title" content="Hunger Trail β #{{ daily.number }}">
+  <meta property="og:description" content="The beta arena. Test it before everyone else.">
+  <meta property="og:image" content="https://hungertrail.com/static/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><rect width='8' height='8' fill='%230b0f0a'/><rect x='3' y='1' width='2' height='5' fill='%233dc8ff'/><rect x='2' y='4' width='4' height='3' fill='%233dc8ff'/><rect x='3' y='5' width='2' height='1' fill='%23ffd23d'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ v }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='beta/beta.css') }}?v={{ v }}">
+</head>
+<body>
+  <div id="app">
+
+    <section id="title" class="screen">
+      <div class="scene" data-art="title"></div>
+      <h1 class="logo">HUNGER<br>TRAIL <span class="beta-tag">β</span></h1>
+      <p class="kicker">Beta #{{ daily.number }} · <span id="title-date"></span></p>
+      <p class="tagline">24 tributes enter the arena.<br>One comes home.</p>
+      <div class="menu">
+        <button id="btn-daily" class="big primary">Enter today's arena</button>
+        <button id="btn-practice" class="big">Practice run</button>
+        <button id="btn-board" class="big">Leaderboard</button>
+        <button id="btn-help" class="big">How to play</button>
+      </div>
+      <p class="dim small">This is the beta: new rules, still changing. Scores here are separate from hungertrail.com and may reset.</p>
+    </section>
+
+    <section id="help" class="screen" hidden>
+      <h2>How to play</h2>
+      <p>You are a tribute. 23 others want you dead. Last one alive wins.</p>
+      <ul class="rules">
+        <li><b>❤️ Health</b> — hit zero and you're out.</li>
+        <li><b>🎒 Supplies</b> — days of food and water. You use one every night. Run out and you starve.</li>
+        <li><b>Kit</b> — three slots. Everything you carry does something, all the time. Full? Something has to go.</li>
+        <li><b>Every choice shows its stakes:</b> the odds, <span class="win">✓</span> what you get if it works, <span class="lose">✗</span> what it costs if it doesn't. <span class="lose">☠️</span> means it could kill you.</li>
+        <li><b>🎥 the crowd likes it.</b> Thrill the Capitol and sponsors send gifts. Bore them and Caesar will warn you. Then the Gamemakers step in.</li>
+        <li><b>The final duel</b> weighs everything you carry and did. A good run walks in with an edge.</li>
+      </ul>
+      <p>One ranked run a day. Practice as much as you like.</p>
+      <button class="big back">Back</button>
+    </section>
+
+    <section id="reaping" class="screen" hidden>
+      <h2 id="reaping-title">The Reaping</h2>
+      <p class="dim">Choose your district. Each one gives you an edge.</p>
+      <div id="districts" class="grid"></div>
+      <p id="perk-desc" class="perk-desc"></p>
+      <p class="dim">Name your district partner and up to two allies. Oregon Trail rules: name them after your friends.</p>
+      <label class="field"><span>District partner</span><input id="name-partner" maxlength="14" autocomplete="off"></label>
+      <label class="field"><span>Ally</span><input id="name-ally1" maxlength="14" autocomplete="off" placeholder="optional"></label>
+      <label class="field"><span>Ally</span><input id="name-ally2" maxlength="14" autocomplete="off" placeholder="optional"></label>
+      <p class="dim small">Allies help in a fight and make sneaking harder. And only one of you can win.</p>
+      <button id="btn-start" class="big primary">Volunteer as tribute</button>
+      <button class="big back">Back</button>
+    </section>
+
+    <section id="game" class="screen" hidden>
+      <header id="status"></header>
+      <div id="log" aria-live="polite"></div>
+      <div id="options"></div>
+    </section>
+
+    <section id="hunt" class="overlay" hidden>
+      <div class="hunt-box">
+        <p class="hunt-title">HUNTING</p>
+        <p class="dim small">Shoot when the arrow is over the animal. Three shots.</p>
+        <div class="track"><div class="zone"></div><div class="marker"></div></div>
+        <p class="hunt-shots"></p>
+        <button id="btn-shoot" class="big primary">Shoot</button>
+      </div>
+    </section>
+
+    <section id="results" class="screen" hidden>
+      <div id="card" class="card"></div>
+      <button id="btn-share" class="big primary">Share result</button>
+      <div id="submit-box">
+        <p class="dim">Put your name on today's beta board.</p>
+        <div class="row">
+          <input id="nickname" maxlength="16" placeholder="Nickname" autocomplete="nickname">
+          <button id="btn-submit">Submit</button>
+        </div>
+        <p id="submit-msg" class="small"></p>
+      </div>
+      <p class="dim small center">Next arena in <span class="countdown"></span></p>
+      <button id="btn-results-board" class="big">Leaderboard</button>
+      <button id="btn-again" class="big">Practice run</button>
+      <button class="big home">Main menu</button>
+    </section>
+
+    <section id="board" class="screen" hidden>
+      <h2>Today's victors and the fallen</h2>
+      <p class="dim small" id="board-date"></p>
+      <div id="board-rows"></div>
+      <p class="dim small center">Next arena in <span class="countdown"></span></p>
+      <button class="big home">Main menu</button>
+    </section>
+
+    <div id="toast" hidden></div>
+  </div>
+
+  <script id="config" type="application/json">{{ config | tojson }}</script>
+  <script src="{{ url_for('static', path='art.js') }}?v={{ v }}"></script>
+  <script src="{{ url_for('static', path='beta/beta.js') }}?v={{ v }}"></script>
+</body>
+</html>
