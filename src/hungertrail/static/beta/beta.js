@@ -326,8 +326,8 @@ function entryNode(entry) {
     const tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
     let head = entry.ok ? "MADE IT" : entry.near ? (entry.got ? "GOT IT, BUT CUT" : "CLOSE CALL") : "MISSED";
     let note = entry.chance + "%" + (entry.near ? " · half damage" : "");
-    if (entry.game) {
-      head = entry.label;
+    if (entry.game || entry.head) {
+      head = entry.head || entry.label;
       note = entry.note;
     }
     node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: note }));
@@ -348,7 +348,7 @@ function foldScene(sc) {
   const bits = [];
   for (const e of sc.entries) {
     if (e.kind === "choice") bits.push(e.text);
-    else if (e.kind === "roll") bits.push(e.game ? e.label : e.ok ? "made it" : e.near ? "close call" : "missed");
+    else if (e.kind === "roll") bits.push(e.head || (e.game ? e.label : e.ok ? "made it" : e.near ? "close call" : "missed"));
     else if (e.kind === "delta") bits.push(e.text);
   }
   if (!bits.length) {
@@ -467,13 +467,13 @@ function showOptions(v) {
   box.replaceChildren();
   box.className = "";
   box.classList.toggle("draft", v.card === "draft");
-  box.classList.toggle("sifting", !!v.sift);
+  box.classList.toggle("digging", !!v.dig);
   const delay = 80;
   if (v.over) {
     box.append(el("button", { class: "big primary appear", style: `animation-delay:${delay}ms`, text: v.result.won ? "Claim your crown" : "See how you did", onclick: () => showResults(v) }));
     return;
   }
-  if (v.sift) box.append(siftGrid(v.sift, v.options, delay));
+  if (v.dig) box.append(digPanel(v.dig, delay));
   if (v.card === "draft") return box.append(hornDraft(v, delay));
   v.options.filter((o) => o.dig == null).forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
   // What an item you don't have would let you do here.
@@ -520,85 +520,16 @@ function hornDraft(v, delay) {
 // A tap on the story while it's still appearing shows the rest of the scene at once.
 function skipAnimation() { hurry = true; }
 
-// The sift, after Slay the Spire's Crystal Sphere: treasures cover several tiles, and one is yours
-// only once every tile of it is open. A small dig opens one tile; a big dig opens a 3x3.
-let bigDig = false;
-let aim = null;
-function siftGrid(sf, options, delay) {
-  const wrap = el("div", { class: "sift appear", style: `animation-delay:${delay}ms` });
-  const digging = sf.how != null;
-  const n = sf.size;
-  const byTile = {};
-  for (const o of options) if (o.dig != null) (byTile[o.dig] = byTile[o.dig] || {})[o.big ? "big" : "small"] = o;
-  const grid = el("div", { class: "siftgrid" + (digging ? "" : " idle"), style: `grid-template-columns:repeat(${n},1fr)` });
-  const area = (i) => {
-    const x = i % n, y = Math.floor(i / n), out = [];
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
-      if (x + dx >= 0 && x + dx < n && y + dy >= 0 && y + dy < n) out.push((y + dy) * n + x + dx);
-    return out;
-  };
-  const showAim = (i) => {
-    grid.querySelectorAll(".tile.aim").forEach((c) => c.classList.remove("aim"));
-    if (i == null) return;
-    (bigDig ? area(i) : [i]).forEach((j) => grid.children[j].classList.add("aim"));
-  };
-  const labelled = new Set();  // one icon per buried shape, not one per tile
-  sf.tiles.forEach((t, i) => {
-    const cell = el("button", { class: "tile", "data-i": i });
-    if (t.open) {
-      cell.classList.add("open");
-      cell.disabled = true;
-      if (t.shape != null) {
-        cell.classList.add(t.trap ? "trap" : t.done ? "done" : "piece");
-        for (const side of t.edge) cell.classList.add("e" + side);
-        if (!labelled.has(t.shape)) { labelled.add(t.shape); cell.append(el("span", { class: "what", text: t.icon })); }
-      }
-    } else {
-      cell.disabled = !digging;
-      cell.onclick = () => {
-        const o = byTile[i] && byTile[i][bigDig ? "big" : "small"];
-        if (!o) return;
-        // A big dig takes two taps: one to aim, one to dig. On a phone there's no hover to preview it.
-        if (bigDig && aim !== i) { aim = i; showAim(i); hint.textContent = "Tap the same tile again to dig."; return; }
-        aim = null;
-        pickOption(o);
-      };
-      cell.onpointerenter = (e) => { if (digging && e.pointerType === "mouse") showAim(i); };
-      cell.onpointerleave = (e) => { if (e.pointerType === "mouse") showAim(aim); };
-    }
-    grid.append(cell);
-  });
-  const hint = el("p", { class: "dim small sifthint", text: digging ? "Tap a tile to dig it." : "" });
-  if (digging) wrap.append(grid);  // before you choose how to dig, just what's buried
-  if (digging) {
-    const small = el("button", { class: "mode" + (bigDig ? "" : " on"), text: "Small dig: 1 tile" });
-    const big = el("button", { class: "mode" + (bigDig ? " on" : ""), text: "Big dig: 3×3" });
-    const set = (b) => {
-      bigDig = b; aim = null; showAim(null);
-      small.classList.toggle("on", !b); big.classList.toggle("on", b);
-      hint.textContent = b ? "Tap a tile to aim, then tap it again to dig." : "Tap a tile to dig it.";
-    };
-    small.onclick = () => set(false);
-    big.onclick = () => set(true);
-    wrap.append(el("div", { class: "siftbar" },
-      el("span", { class: "digs", text: `${sf.digs} dig${sf.digs === 1 ? "" : "s"} left` }), small, big), hint);
-  } else { bigDig = false; aim = null; }
-  // What's buried, and its size. A treasure is yours once every tile of it is open.
-  const legend = el("div", { class: "siftlegend" });
-  if (!digging) legend.append(el("span", { class: "lghead", text: "Buried here. A find is yours once every tile of it is dug out." }));
-  const groups = [];
-  for (const t of sf.legend) {
-    const name = t.name.replace(/^an? /, "").replace(/: .*/, "").replace(/^crate with a (.*)/, "$1 in a crate");
-    const g = groups.find((x) => x.name === name && x.trap === t.trap);
-    if (g) { g.n++; g.done += t.done; g.found = g.found || t.found; } else groups.push({ ...t, name, n: 1, done: +t.done });
-  }
-  for (const t of groups) {
-    const state = t.trap ? (t.done ? "went off" : "") : t.done ? (t.n > 1 ? `${t.done} yours` : "yours") : t.found && t.n === 1 ? `${t.found}/${t.w * t.h}` : "";
-    legend.append(el("span", { class: "lg" + (t.trap ? " trap" : "") + (t.done ? " done" : "") },
-      `${t.icon} ${t.name}${t.n > 1 ? " ×" + t.n : ""} `, el("i", { text: `${t.w}×${t.h}` }), state ? el("b", { text: " " + state }) : null));
-  }
-  wrap.append(legend);
-  return wrap;
+// The dig at the horn: push your luck. What's still buried, how close the Careers are, what you've
+// dug out. Each dig spins a wheel with one slice per buried thing (wheel.js).
+function digPanel(d, delay) {
+  const row = (name, ...kids) => el("div", { class: "digrow" }, el("span", { class: "dname", text: name }), el("span", { class: "dwhat" }, ...kids));
+  const ears = [];
+  for (let i = 0; i < d.caught; i++) ears.push(el("i", { class: i < d.heard ? "on" : "", text: i < d.heard ? "●" : "○" }));
+  return el("div", { class: "dig appear", style: `animation-delay:${delay}ms` },
+    row("Buried", d.buried.join(" ")),
+    row("Careers", ...ears),
+    row("Yours", d.haul.length ? d.haul.join(" ") : el("span", { class: "dim", text: "nothing yet" })));
 }
 
 function optionButton(o, i, delay, card) {
@@ -618,7 +549,7 @@ function optionButton(o, i, delay, card) {
     el("span", { class: "key", text: i + 1 }),
     el("span", { class: "label" },
       el("span", { class: "ltext", text: o.label }),
-      hint ? el("small", { class: "hint", text: hint }) : null,
+      hint ? el("small", { class: "hint" + (o.danger ? " danger" : ""), text: hint }) : null,
       stakes.childNodes.length ? stakes : null),
     o.chance != null ? el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" })
       : o.minigame ? el("span", { class: "chance game", title: "a minigame", text: Games.ICON[o.minigame.game] }) : null);

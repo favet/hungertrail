@@ -81,11 +81,11 @@ rubble today. No game relies on sound.
 - Hold still (some event options, marked 🤫): hold to stay down while a searcher's light sweeps.
   Breath runs out while you hold, so you breathe in the gaps. The nemesis searches slower and
   wider.
-- The sift (the horn), after Slay the Spire's Crystal Sphere: a 9x9 field of rubble with shapes
-  buried in it (a 3x3 crate, a 3x1 weapon, 2x2 packs, cans, a mine and a snare). Dig quietly (4
-  digs for a day of food) or loudly (6 digs, and Careers hide in the rubble). A small dig opens one
-  tile, a big dig a 3x3. A find is yours only once every tile of it is dug out. The layout comes
-  from the daily seed and each dig is a choice, so it stays on the server.
+- The dig (the horn), push your luck: the rubble is a pile you can see, six things worth having and
+  four noises. Each dig spins the wheel, one slice per thing still buried. Loot goes into your
+  haul; the third noise brings a Career (−20 health) and you drop the haul. Leave whenever you
+  like with what you've dug out. The pile comes from the daily seed; the spins are the run's.
+  (Replaced the sift, a 9x9 Crystal Sphere field: blind guessing with hidden traps.)
 - The final fight runs on health: yours against theirs (70, the nemesis 100). Each exchange you
   press or hold; then watch which side they wind up on, block it as the ring closes, and strike in
   the gap. Feints and faster swings come as it drags on; from exchange 10 every blow counts double.

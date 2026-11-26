@@ -50,6 +50,14 @@ const Wheel = (() => {
     s.append(slice(0, 100, 100, "wr"));
     if (near) s.append(slice(c, Math.min(100, c + NEAR), 100, "wy"));
     s.append(slice(0, c, 100, "wg"));
+    // A pile (the dig): one slice per thing in it, each with its icon.
+    for (const sp of odds.slices || []) {
+      s.append(slice(sp.a, sp.b, 100, (sp.ok ? "wg" : "wr") + " wpart"));
+      const [x, y] = pt((sp.a + sp.b) / 2, 70);
+      const t = svg("text", { x, y, class: "wicon", "text-anchor": "middle", "dominant-baseline": "central" });
+      t.textContent = sp.icon;
+      s.append(t);
+    }
     for (const sp of spans(odds)) {
       s.append(slice(sp.a, sp.b, 100, "wedge " + (sp.delta > 0 ? "up" : "down")));
       const [x, y] = pt((sp.a + sp.b) / 2, 74);
@@ -57,7 +65,7 @@ const Wheel = (() => {
       t.textContent = sp.icon;
       s.append(t);
     }
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 20 && !odds.slices; i++) {
       const [x0, y0] = pt(i * 5, 100), [x1, y1] = pt(i * 5, 88);
       s.append(svg("line", { x1: x0, y1: y0, x2: x1, y2: y1, class: "wtick" }));
     }
@@ -71,6 +79,7 @@ const Wheel = (() => {
   // What built the odds: the card's base, then each edge, green or red.
   function edgeList(odds) {
     const row = mk("div", "wheel-edges");
+    if (odds.slices) return row;
     row.append(mk("span", "base", `${odds.base}% to start`));
     for (const e of odds.edges) row.append(mk("span", e.delta > 0 ? "up" : "down", `${e.icon} ${e.label} ${e.delta > 0 ? "+" : "−"}${Math.abs(e.delta)}`));
     if (odds.chance !== odds.base + odds.edges.reduce((n, e) => n + e.delta, 0)) row.append(mk("span", "base", `capped at ${odds.chance}%`));
@@ -118,7 +127,7 @@ const Wheel = (() => {
     return new Promise((done) => {
       if (!cur || cur.label !== entry.label) {
         const box = show(entry.label || "A roll", "");
-        const odds = { chance: entry.chance, base: entry.base ?? entry.chance, edges: entry.edges || [] };
+        const odds = { chance: entry.chance, base: entry.base ?? entry.chance, edges: entry.edges || [], slices: entry.slices };
         const { wrap, disc } = draw(odds, entry.near_zone);
         box.append(wrap, edgeList(odds));
         cur = { box, disc, label: entry.label };
@@ -132,9 +141,9 @@ const Wheel = (() => {
       requestAnimationFrame(() => requestAnimationFrame(() => (disc.style.transform = `rotate(${turn}deg)`)));
       setTimeout(() => {
         const tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
-        const head = entry.ok ? "MADE IT" : entry.near ? (entry.got ? "GOT IT, BUT CUT" : "CLOSE CALL") : "MISSED";
+        const head = entry.head || (entry.ok ? "MADE IT" : entry.near ? (entry.got ? "GOT IT, BUT CUT" : "CLOSE CALL") : "MISSED");
         const v = mk("div", "mg-verdict wheel-verdict " + tone);
-        v.append(mk("b", "", head), mk("span", "", `${entry.chance}% · landed on ${entry.roll}` + (entry.near ? " · half damage" : "")));
+        v.append(mk("b", "", head), mk("span", "", entry.note || `${entry.chance}% · landed on ${entry.roll}` + (entry.near ? " · half damage" : "")));
         box.append(v);
         if (navigator.vibrate) navigator.vibrate(entry.ok ? 15 : [30, 40, 30]);
         const finish = () => { if (!cur) return; document.removeEventListener("pointerdown", finish); close(); done(); };

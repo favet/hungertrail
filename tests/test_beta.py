@@ -11,7 +11,7 @@ from hungertrail.app import app
 from hungertrail.beta import engine, lore
 from hungertrail.beta import minigames as mg
 from hungertrail.beta.bots import BOTS, hands, play
-from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SIFT, SIFT_BIG, SIFT_SMALL, SIFT_STOP, SWAP, USE,
+from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, DIG, DIG_GO, DIG_LEAVE, DIG_CAUGHT, DIG_NOISE, SWAP, USE,
                                      Game, cards, new_setup, replay)
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
@@ -317,34 +317,51 @@ def test_hide_is_fair():
             assert cover and all(b - a < p["breath"] for a, b in cover)
 
 
-def test_sift_at_the_horn():
-    """The Crystal Sphere: treasures cover several tiles and are yours only once fully uncovered."""
-    g = Game(5, 9, SETUP)
-    g.choose(len(g.arena.layout))
-    g.arena.offers[2] = ["stream", "horn", "open"]
-    g.supplies = 3
-    g.kit = []
-    horn = next(o for o in g.options() if o["place"] == "horn")
-    g.choose(horn["index"])
-    assert g.card == SIFT and [o["label"] for o in g.options()] == ["Dig quietly", "Dig loudly"]
-    g.choose(0)
-    assert g.supplies == 2 and g.sift["digs"] == 4
-    view = g.sift_view()
-    assert len(view["tiles"]) == 81 and not any(t["open"] for t in view["tiles"])
-    assert "cells" not in str(view) and "career" not in str(view)  # nothing under the rubble leaks
-    assert any(t["name"].startswith("a crate") and (t["w"], t["h"]) == (3, 3) for t in view["legend"])
-    crate = next(s for s in g.sift["shapes"] if s["kind"] == "crate")
-    corner, middle = crate["cells"][0], crate["cells"][4]
-    g.choose(SIFT_SMALL + corner)  # one piece: not yours yet, and its edges show it's a corner
-    piece = g.sift_view()["tiles"][corner]
-    assert piece["open"] and not piece["done"] and set(piece["edge"]) == {"t", "l"}
-    assert crate["item"] not in g.kit
-    g.choose(SIFT_BIG + middle)  # the 3x3 on its middle opens the rest of it
-    assert crate["done"] and crate["item"] in g.kit
-    assert g.sift["digs"] == 2
-    while not g.over and g.card == SIFT:
-        g.choose(SIFT_STOP)
-    assert g.over or g.card != SIFT
+def test_dig_at_the_horn():
+    """Push your luck: each dig spins a wheel of what's still buried; the third noise brings a Career."""
+    def at_horn(salt):
+        g = Game(5, salt, SETUP)
+        g.choose(len(g.arena.layout))
+        g.arena.offers[2] = ["stream", "horn", "open"]
+        g.kit, g.health = [], 100
+        g.choose(next(o for o in g.options() if o["place"] == "horn")["index"])
+        return g
+
+    g = at_horn(9)
+    assert g.card == DIG and [o["label"] for o in g.options()] == ["Dig", "Leave it"]
+    view = g.dig_view()
+    loot = len(view["buried"]) - DIG_NOISE
+    assert view["buried"].count("👂") == DIG_NOISE and view["haul"] == [] and view["heard"] == 0
+    assert g.options()[0]["hint"] == f"{DIG_NOISE} in {loot + DIG_NOISE} is noise"
+    g.choose(DIG_GO)
+    spin = g.log[-1] if g.log[-1]["kind"] == "roll" else next(e for e in reversed(g.log) if e["kind"] == "roll")
+    # the wheel shows one slice per buried thing, and the roll lands in the slice that was dug
+    assert len(spin["slices"]) == loot + DIG_NOISE and spin["slices"][-1]["b"] == 100
+    hit = next(s for s in spin["slices"] if s["a"] < spin["roll"] <= s["b"])
+    assert hit["ok"] == spin["ok"] and spin["chance"] == spin["slices"][loot - 1]["b"]
+    after = g.dig_view()
+    assert len(after["buried"]) == loot + DIG_NOISE - 1
+    assert (len(after["haul"]), after["heard"]) == ((1, 0) if spin["ok"] else (0, 1))
+    # leaving keeps the haul
+    food, kit = g.supplies, list(g.kit)
+    got = list(g.dig["haul"])
+    g.choose(DIG_LEAVE)
+    assert g.card != DIG and g.dig is None
+    gained = sum(2 if t["kind"] == "pack" else 1 for t in got if t["kind"] in ("pack", "can"))
+    assert g.supplies == food + gained and all(t["item"] in g.kit for t in got if t["item"])
+
+    # digging on and on: either the pile runs dry or the third noise brings a Career and the haul is lost
+    for salt in range(1, 40):
+        g = at_horn(salt)
+        food = g.supplies
+        while g.card == DIG and not g.over:
+            g.choose(DIG_GO)
+        caught = any("Footsteps" in e["text"] for e in g.log)
+        if caught:
+            assert g.health <= 80 and g.supplies == food and not g.kit
+            break
+    else:
+        raise AssertionError("never caught")
 
 
 def test_python_and_browser_minigames_agree():
@@ -425,7 +442,7 @@ def test_edge_brings_the_gamemakers():
         pick = (edge or g.options())[0]["index"]
         g.choose(pick, hands(g, pick, 0.5, random.Random(1)))
         while not g.over and g.card not in (PLACES,) and not g.card.startswith("gm_"):
-            pick = g.options()[-1 if g.card == SIFT else 0]["index"]
+            pick = g.options()[-1 if g.card == DIG else 0]["index"]
             g.choose(pick, hands(g, pick, 0.5, random.Random(1)))
         if g.card.startswith("gm_"):
             break
