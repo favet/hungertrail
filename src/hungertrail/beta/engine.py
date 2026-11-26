@@ -14,8 +14,13 @@ Same contract as the live engine: pure and deterministic, a run is (seed, salt, 
 - A failed roll within NEAR points is a near miss: the damage is halved.
 - One named Career, the nemesis, is the same for everyone today: their kills show in the sky,
   they cross your path, and if they're alive at the end they're your final opponent.
-- The final duel is best of three rounds; your edges (kit, health, kills) set each round's odds.
-- Rolls the player chose are logged as "roll" entries so the screen can show what happened.
+- The final fight runs on health, yours and theirs. Each exchange you pick a stance, then read their
+  wind-up and block it; a clean block opens a moment to strike back.
+- Minigames (minigames.py) are played in the browser and replayed here from the player's inputs:
+  fishing at the stream, hunting on the ridge, the sift at the horn, holding still when you hide,
+  and every exchange of the final fight. Their layouts come from the daily seed (the same for
+  everyone today); only the fight's tells come from the run's own dice.
+- Rolls and minigames the player chose are logged as "roll" entries so the screen can show what happened.
 """
 
 from __future__ import annotations
@@ -29,21 +34,43 @@ from typing import Any
 import yaml
 
 from . import lore
+from . import minigames as mg
 
 START_TRIBUTES = 24
 MAX_DAYS = 8
-DAMAGE = 2.6  # global lethality dial for card damage, tuned with the bots
+DAMAGE = 3.2  # global lethality dial for card damage, tuned with the bots
+HIT_CAP = 85  # no single card hit is bigger than this, so one miss never kills from full health
 NEAR = 10  # a failed roll this close to the target is a near miss
-DUEL_BASE = 34  # odds of winning a duel round before your edges
-DUEL_HIT = {"press": 25, "hold": 12}  # what a lost round costs
+# The final fight. stance: (damage your strike deals, damage you take if you don't block)
+FIGHT = {"aggressive": (26, 30), "careful": (14, 18)}
+FIGHT_NEMESIS_HIT = 8  # the nemesis hits harder
+FIGHT_PER_KILL, FIGHT_KILLS_CAP = 4, 12  # your kills make your strikes count
+FIGHT_TIRED = 10  # from this exchange on, every blow counts double: nobody fights forever
+OPPONENT_HEALTH = {"nemesis": 100, "other": 70}
 OPEN_GIFT = 55  # odds a sponsor pays when you go out in the open
-HORN_LOOT = 60  # odds of picking something up when you head for the horn
 HIDE_HEAL = 25
 EDGE_WATCHED = 5  # from this day, any day at the edge brings the Gamemakers
 EDGE_CLOSES = 6  # from this day the edge places are gone
 USE = 99  # choice index for tapping the medkit in your kit
-HUNT = "hunt"
-DRAFT, PLACES, SWAP, DUEL = "draft", "places", "swap", "duel"
+DRAFT, PLACES, SWAP, DUEL, SIFT = "draft", "places", "swap", "duel", "sift"
+
+# The sift: a 5x5 grid of rubble at the horn. Dig quietly (costs a day of supplies) or loudly (free,
+# more digs, but Careers hear it). A small dig turns one tile; a big dig turns a cross of five.
+SIFT_SIZE = 5
+SIFT_DIGS = {"quiet": 3, "loud": 6}
+SIFT_SMALL, SIFT_BIG, SIFT_STOP = 10, 40, 70  # choice index = SIFT_SMALL + tile, SIFT_BIG + tile
+SIFT_TILES = {
+    # what: emoji, what the screen calls it
+    "food": ("🥫", "food"),
+    "clue": ("🔮", "a Capitol map"),
+    "snare": ("🪤", "a snare"),
+    "mine": ("💥", "a mine"),
+    "career": ("👁️", "a Career"),
+    "empty": ("·", "rubble"),
+}
+SIFT_HURT = {"snare": (12, "a snare in the rubble"), "mine": (30, "a mine left from the bloodbath"),
+             "career": (25, "a Career who heard you digging")}
+SIFT_ITEMS = ("knife", "rope", "medkit", "iodine", "sleeping_bag", "spear", "axe", "knife", "rope", "medkit", "bow")
 
 # Cornucopia rings: base odds, damage on a miss, how it reads.
 RINGS = {
@@ -182,8 +209,11 @@ class Game:
         self.target: str | None = None
         self.opponent: str | None = None
         self.opponent_id: str | None = None
-        self.duel_wins = 0
-        self.duel_losses = 0
+        self.opp_health = 0
+        self.opp_max = 0
+        self.exchanges = 0
+        self.sift: dict | None = None
+        self.item_queue: list[str] = []
         self.grabs = 0
         self.taken: set[int] = set()
         self.pending_item: str | None = None
@@ -226,6 +256,8 @@ class Game:
             return self._swap_options()
         if self.card == DUEL:
             return self._duel_options()
+        if self.card == SIFT:
+            return self._sift_options()
         card = cards()[self.card]
         out = []
         for i, o in enumerate(card["options"]):
@@ -234,6 +266,10 @@ class Game:
             if "roll" in o:
                 win = self._chips(o["success"].get("effects", {}))
                 lose = self._chips(o["fail"].get("effects", {}), card)
+                if o.get("minigame") == "hide":
+                    out.append(self._opt(i, o["label"], o.get("hint", "") or "Hold to stay down. Let go to breathe.", None,
+                                         o.get("tag", "safe"), win, lose, minigame=self._hide_params(card["id"], o["roll"]["base"])))
+                    continue
                 out.append(self._opt(i, o["label"], o.get("hint", ""), self._chance(o["roll"]), o.get("tag", "safe"), win, lose))
             else:
                 e = o.get("effects", {})
@@ -243,7 +279,7 @@ class Game:
     def can_use_medkit(self) -> bool:
         return not self.over and "medkit" in self.kit and self.health < 100 and self.card != SWAP
 
-    def choose(self, index: int, param: int | None = None) -> None:
+    def choose(self, index: int, param=None) -> None:
         if self.over:
             raise ValueError("run is over")
         if index == USE:
@@ -256,16 +292,19 @@ class Game:
         self.last = (o["label"], o["chance"], self.health)
         snap = self._snap()
         self._say(o["label"], "choice")
+        game = o.get("minigame")
         if self.card == DRAFT:
             dest = self._resolve_draft(index)
         elif self.card == PLACES:
-            dest = self._resolve_place(index, param)
+            dest = self._resolve_place(index, param, game)
         elif self.card == SWAP:
             dest = self._resolve_swap(index)
         elif self.card == DUEL:
-            dest = ("round", self._resolve_duel(index))
+            dest = ("round", self._resolve_duel(index, param, game))
+        elif self.card == SIFT:
+            dest = self._resolve_sift(index)
         else:
-            dest = self._resolve_card(index)
+            dest = self._resolve_card(index, param, game)
         self._delta(snap)
         if dest and dest[0] == "round":
             if dest[1]:
@@ -295,7 +334,7 @@ class Game:
     def _chips(self, e: dict, card: dict | None = None) -> list[str]:
         out = []
         if "health" in e:
-            n = e["health"] if e["health"] > 0 else -round(-e["health"] * DAMAGE)
+            n = e["health"] if e["health"] > 0 else -self._card_damage(e["health"])
             if n > -self.health:  # a hit that would kill you shows as ☠️ alone, below
                 out.append(f"❤️{_sign(n)}")
         if e.get("supplies"):
@@ -315,9 +354,13 @@ class Game:
             out.append(f"−{self.allies[0]}")
         if e.get("ally") == "joins_partner":
             out.append(f"+{self.partner}")
-        if e.get("die") or ("health" in e and e["health"] < 0 and round(-e["health"] * DAMAGE) >= self.health):
+        if e.get("die") or ("health" in e and e["health"] < 0 and self._card_damage(e["health"]) >= self.health):
             out.append("☠️")
         return out
+
+    @staticmethod
+    def _card_damage(health_effect: int) -> int:
+        return min(HIT_CAP, round(-health_effect * DAMAGE))
 
     @staticmethod
     def _list(v) -> list:
@@ -398,8 +441,10 @@ class Game:
     def _gain(self, item: str) -> None:
         if len(self.kit) < lore.KIT_SLOTS:
             self.kit.append(item)
-        else:
+        elif self.pending_item is None:
             self.pending_item = item
+        else:
+            self.item_queue.append(item)  # one full-kit question at a time
 
     def _swap_options(self) -> list[dict]:
         new = self.pending_item
@@ -420,6 +465,8 @@ class Game:
             self._say(f"You leave the {lore.item_name(old)} behind and take the {lore.item_name(new)}.", "result")
         else:
             self._say(f"You leave the {lore.item_name(new)} where it lies.", "result")
+        while self.item_queue and self.pending_item is None:
+            self._gain(self.item_queue.pop(0))
         return self.resume
 
     # ------------------------------------------------------------------ flow
@@ -443,6 +490,10 @@ class Game:
             self._say("The Careers are at the horn now. One more grab, or run?", "prompt")
         elif kind == "duel":
             self._start_duel()
+        elif kind == "sift":
+            self.card = SIFT
+            self._say("The bloodbath left the ground around the horn a mess of crates and rubble. Some of it was "
+                      "never picked over. Digging is slow, and it isn't quiet.", "event")
 
     def _draw(self, card_id: str) -> None:
         self.card = card_id
@@ -461,11 +512,18 @@ class Game:
             return None
         return _rng(self.seed, card["id"], self.district).choice(sorted(cands))
 
-    def _resolve_card(self, index: int) -> tuple:
+    def _resolve_card(self, index: int, param=None, game: dict | None = None) -> tuple:
         card = cards()[self.card]
         opt = card["options"][index]
         near = False
-        if "roll" in opt:
+        if game and game["game"] == "hide":
+            how, _ = mg.hide_run(game, mg.clean_toggles(param, game["duration"]))
+            ok = how == "hidden"
+            self._played("hide", ok, {"hidden": "HIDDEN", "spotted": "SPOTTED", "gasp": "YOU GASPED"}[how],
+                         "held still" if ok else "they saw you" if how == "spotted" else "out of breath")
+            branch = opt["success" if ok else "fail"]
+            text, effects = branch.get("text", ""), branch.get("effects", {})
+        elif "roll" in opt:
             _, ok, near = self._reveal(self._chance(opt["roll"]))
             branch = opt["success" if ok else "fail"]
             text, effects = branch.get("text", ""), branch.get("effects", {})
@@ -626,21 +684,24 @@ class Game:
             emoji, label, hint, tag = PLACES_INFO[key]
             extra = {}
             if key == "stream":
-                win, lose = ["🎒+1"], ["⚔️ others drink here too"]
+                win, lose = ["🎣 🎒+1 or +2"], ["⚔️ others drink here too"]
+                extra["minigame"] = self._fish_params()
+                hint = "Fish for your supper. Water and food. Everyone else needs it too."
             elif key == "rocks":
                 win, lose = [f"❤️+{self._hide_heal()}"], ["🎒−1"]
             elif key == "ridge":
                 if any(w in self.kit for w in lore.HUNTERS):
-                    per = 2 if self.district == 10 else 1
-                    win, lose = [f"🎒+{per} a hit"], ["🐾 noise if you miss"]
-                    extra["minigame"] = HUNT
-                    hint = "Hunt up high: three shots. The edge of the arena."
+                    hunt = self._hunt_params()
+                    shots = len(hunt["shots"])
+                    win, lose = ["🏹 🐇🎒+1 🦌🎒+2" if shots > 1 else "🗡️ 🐇🎒+2 🦌🎒+3"], ["🐾 noise if you miss"]
+                    extra["minigame"] = hunt
+                    hint = (f"Hunt up high: {'three arrows' if shots > 1 else 'one throw'}. The edge of the arena.")
                 else:
                     snares = self.district == 3 or "rope" in self.kit
                     win, lose = [f"🎒+{2 if self.district == 3 else 1 if snares else 2} likely"], ["🐾 some danger"]
                     hint = ("Set snares up high." if snares else "Forage up high.") + " The edge of the arena."
             elif key == "horn":
-                win, lose = ["🎁 loot likely"], ["⚔️ fights likely"]
+                win, lose = ["⛏️ dig for loot"], ["⚔️ fights likely"]
             elif key == "open":
                 win, lose = ["🎁 sponsor gift likely"], ["👁️ you'll be seen"]
             else:  # feast
@@ -651,16 +712,30 @@ class Game:
             out.append(self._opt(PLACE_KEYS.index(key), f"{emoji} {label}", hint, None, tag, win, lose, place=key, **extra))
         return out
 
-    def _resolve_place(self, index: int, param: int | None) -> tuple:
+    def _resolve_place(self, index: int, param=None, game: dict | None = None) -> tuple:
         key = PLACE_KEYS[index]
         self.place = key
         if key == "feast":
             return ("draw", "feast")
         self.days[self.day].append(PLACES_INFO[key][0])
         if key == "stream":
-            self.supplies += 1
-            self._say(self._pick("You drink until your stomach hurts and fill everything you have.",
-                                 "Cold water, and a few fish too slow to get away."), "result")
+            caught, _ = mg.fish_run(game, mg.clean_toggles(param, game["duration"]))
+            kind = game["kind"]
+            emoji, food, hurt, _ = mg.FISH_KINDS[kind]
+            if caught and kind == "leech":
+                self._played("fish", False, "A LEECH", "you pulled it in")
+                self._say("It isn't a fish. It's a leech the length of your hand, and it's on your wrist before you can drop the line.", "result")
+                self._hurt(-hurt, "a leech from the stream")
+            elif caught:
+                self._played("fish", True, "CAUGHT", f"{emoji} a {kind}")
+                self.supplies += food
+                self._say(self._pick("You drink until your stomach hurts, then eat the fish raw on the bank.",
+                                     f"A {kind}, fat and slippery. Cold water and a meal."), "result")
+            else:
+                self._played("fish", kind == "leech", "LET IT GO" if kind == "leech" else "GOT AWAY",
+                             "a leech, not a fish" if kind == "leech" else f"{emoji} the {kind}")
+                self._say("You drink your fill. That's all you get." if kind != "leech" else
+                          "The dark shape on your line was a leech. You let it go and drink your fill.", "result")
         elif key == "rocks":
             self.health = min(100, self.health + self._hide_heal())
             self.supplies = max(0, self.supplies - 1)
@@ -668,11 +743,16 @@ class Game:
                                  "A dry hollow under an overhang. You don't move until dark, and you eat more than you'd like."), "result")
         elif key == "ridge":
             if any(w in self.kit for w in lore.HUNTERS):
-                hits = max(0, min(3, int(param or 0)))
-                if hits:
-                    self.supplies += hits * (2 if self.district == 10 else 1)
-                    self._say(f"{hits} hit{'s' if hits > 1 else ''}. You eat well tonight.", "result")
+                food, hits = mg.hunt_run(game, mg.clean_taps(param, len(game["shots"])))
+                got = [h for h in hits if h]
+                if food:
+                    names = ", ".join(mg.ANIMALS[h][0] for h in got)
+                    self._played("hunt", True, f"{len(got)} HIT{'S' if len(got) > 1 else ''}", names)
+                    self.supplies += food
+                    self._say("A deer. You eat well for days." if "deer" in got else
+                              f"{len(got)} hit{'s' if len(got) > 1 else ''}. You eat well tonight.", "result")
                 else:
+                    self._played("hunt", False, "MISSED", "everything")
                     self._say("You miss everything. The noise carries.", "result")
                     if not self._roll(70):
                         self._say("Someone heard.", "result")
@@ -687,11 +767,8 @@ class Game:
                 else:
                     self._say(self._pick("You find nothing but blisters.", "Everything edible up here was eaten days ago."), "result")
         elif key == "horn":
-            _, ok, _ = self._reveal(self._chance({"base": HORN_LOOT, "mods": ["grab"]}))
-            self._say("You creep toward the Cornucopia and pick through what the bloodbath left behind." if ok else
-                      "You creep toward the Cornucopia. Picked clean.", "result")
-            if ok:
-                self._apply({"gift": True}, {})
+            self._start_sift()
+            return ("sift",)
         elif key == "open":
             _, ok, _ = self._reveal(self._open_chance())
             if ok:
@@ -717,6 +794,167 @@ class Game:
                 return cid
         return None
 
+    # ------------------------------------------------------------------ minigames
+    def _played(self, game: str, ok: bool, label: str, note: str) -> None:
+        """Log a minigame's result where the roll reveal goes."""
+        self.log.append({"day": self.day, "kind": "roll", "game": game, "ok": ok, "near": False,
+                         "label": label, "note": note, "chance": None, "text": f"{label} · {note}"})
+
+    def _fish_params(self) -> dict:
+        r = _rng(self.seed, "fish", self.day)
+        kinds = ["minnow"] if self.day <= 2 else ["minnow", "trout"] if self.day == 3 else ["minnow", "trout", "trout", "leech"]
+        kind = r.choice(kinds)
+        big = self.district == 4 or any(w in self.kit for w in ("spear", "trident"))
+        return mg.fish_params(r, kind, 3000 if big else 2200)
+
+    def _hunter(self) -> str:
+        return "bow" if "bow" in self.kit else next(w for w in ("spear", "trident") if w in self.kit)
+
+    def _hunt_params(self) -> dict:
+        w = self._hunter()
+        style = "bow" if w == "bow" else "spear"
+        return mg.hunt_params(_rng(self.seed, "hunt", self.day, style), w, self.district == 10)
+
+    def _hide_params(self, card_id: str, base: int) -> dict:
+        breath = (60 if self.district == 8 else 0) - (30 if self.health < 45 else 0)
+        return mg.hide_params(_rng(self.seed, "hide", card_id, self.day), base, breath, 200 * len(self.allies),
+                              card_id == "nemesis_sighting")
+
+    # ------------------------------------------------------------------ the sift
+    def _start_sift(self) -> None:
+        r = _rng(self.seed, "sift", self.day)
+        n = SIFT_SIZE * SIFT_SIZE
+        items = r.sample(SIFT_ITEMS, 2)
+        tiles = ["food"] * 5 + [f"item:{i}" for i in items] + ["clue", "snare", "snare", "mine"]
+        tiles += ["empty"] * (n - len(tiles))
+        r.shuffle(tiles)
+        careers = r.sample([i for i, t in enumerate(tiles) if t == "empty"], 2)  # only there if you dig loudly
+        self.sift = {"tiles": tiles, "careers": careers, "open": [], "digs": 0, "how": None, "clue": False, "found": []}
+
+    def _sift_tile(self, i: int) -> str:
+        if self.sift["how"] == "loud" and i in self.sift["careers"]:
+            return "career"
+        return self.sift["tiles"][i]
+
+    @staticmethod
+    def _cross(i: int) -> list[int]:
+        x, y = i % SIFT_SIZE, i // SIFT_SIZE
+        out = [i]
+        for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
+            if 0 <= x + dx < SIFT_SIZE and 0 <= y + dy < SIFT_SIZE:
+                out.append((y + dy) * SIFT_SIZE + x + dx)
+        return out
+
+    def _sift_options(self) -> list[dict]:
+        sf = self.sift
+        if sf["how"] is None:
+            out = []
+            if self.supplies >= 1:
+                out.append(self._opt(0, "Dig quietly", "Three digs. Slow work, and it costs you a day's food.", None, "safe",
+                                     [f"⛏️×{SIFT_DIGS['quiet']}"], ["🎒−1"]))
+            out.append(self._opt(1, "Dig loudly", "Six digs, and fast. Careers will hear it.", None, "bold",
+                                 [f"⛏️×{SIFT_DIGS['loud']}"], ["👁️ Careers in the rubble"]))
+            out.append(self._opt(2, "Leave the rubble", "Look around the horn instead.", None, "safe", [], []))
+            return out
+        out = []
+        for i in range(SIFT_SIZE * SIFT_SIZE):
+            if i in sf["open"]:
+                continue
+            out.append(self._opt(SIFT_SMALL + i, "Dig here", "", None, "safe", [], [], dig=i, big=False))
+            out.append(self._opt(SIFT_BIG + i, "Dig wide here", "", None, "bold", [], [], dig=i, big=True))
+        out.append(self._opt(SIFT_STOP, "Stop digging", f"{sf['digs']} dig{'s' if sf['digs'] != 1 else ''} left.", None, "safe", [], []))
+        return out
+
+    def sift_view(self) -> dict | None:
+        sf = self.sift
+        if not sf or self.card != SIFT:
+            return None
+        tiles = []
+        for i in range(SIFT_SIZE * SIFT_SIZE):
+            if i in sf["open"]:
+                what = self._sift_tile(i)
+                near = [j for j in self._cross(i)[1:] if j not in sf["open"]]
+                kinds = [self._sift_tile(j) for j in near]
+                tiles.append({
+                    "open": True,
+                    "emoji": lore.item_emoji(what[5:]) if what.startswith("item:") else SIFT_TILES[what][0],
+                    "glint": any(k.startswith("item:") for k in kinds),
+                    "scorch": any(k in SIFT_HURT for k in kinds),
+                })
+            else:
+                tiles.append({"open": False, "marked": sf["clue"] and self._sift_tile(i).startswith("item:")})
+        return {"size": SIFT_SIZE, "digs": sf["digs"], "how": sf["how"], "tiles": tiles}
+
+    def _resolve_sift(self, index: int) -> tuple:
+        sf = self.sift
+        if sf["how"] is None:
+            if index == 2:
+                return self._end_sift(dug=False)
+            sf["how"] = ("quiet", "loud")[index]
+            sf["digs"] = SIFT_DIGS[sf["how"]]
+            if sf["how"] == "quiet":
+                self.supplies -= 1
+                self._say("You work slowly, lifting one plank at a time. It takes all day.", "result")
+            else:
+                self._say("You tear into the rubble with both hands. Anyone nearby can hear it.", "result")
+            self._say("Tap a tile to dig. Dig wide to turn five at once. ✨ means something good is next door; "
+                      "🔥 means something isn't.", "prompt")
+            return ("round", None)
+        if index == SIFT_STOP:
+            return self._end_sift()
+        big = index >= SIFT_BIG
+        tile = index - (SIFT_BIG if big else SIFT_SMALL)
+        sf["digs"] -= 1
+        found, ended = [], False
+        for i in (self._cross(tile) if big else [tile]):
+            if i in sf["open"]:
+                continue
+            sf["open"].append(i)
+            what = self._sift_tile(i)
+            if what == "food":
+                self.supplies += 1
+                found.append("🥫")
+            elif what.startswith("item:"):
+                item = what[5:]
+                self._gain(item)
+                found.append(lore.item_emoji(item))
+            elif what == "clue":
+                sf["clue"] = True
+                found.append("🔮")
+                nxt = self.arena.offers.get(self.day + 1)
+                tomorrow = f" It shows where you can get to tomorrow: {', '.join('the ' + k for k in nxt)}." if nxt else ""
+                self._say("A Capitol map, half burned. Someone marked where the good finds are." + tomorrow, "gift")
+            elif what in SIFT_HURT:
+                dmg, cause = SIFT_HURT[what]
+                found.append(SIFT_TILES[what][0])
+                self._say({"snare": "A wire snaps tight around your wrist.",
+                           "mine": "The ground under the plank clicks.",
+                           "career": "A hand grabs your collar from behind the crate."}[what], "result")
+                self._hurt(dmg, cause)
+                if self.over:
+                    return ()
+                ended = ended or what == "career"
+        good = [f for f in found if f not in ("🪤", "💥", "👁️", "🔮")]
+        self._played("sift", bool(good) and not ended, " ".join(found) if found else "NOTHING",
+                      "dig wide" if big else "dig")
+        if ended:
+            self._say("You tear free and run. The digging is over.", "result")
+            return self._end_sift()
+        if sf["digs"] <= 0:
+            return self._end_sift()
+        return ("round", None)
+
+    def _end_sift(self, dug: bool = True) -> tuple:
+        self.sift = None
+        self.card = ""
+        if dug:
+            self._say("You leave the rubble behind.", "result")
+        card = self._place_card("horn")
+        if card:
+            return ("draw", card)
+        self._say("The rest of the day passes quietly.", "result")
+        return ("night",)
+
     # ------------------------------------------------------------------ the end
     def _start_duel(self) -> None:
         # Everyone but you and one rival goes. Your ally first (only one can win), then the nemesis.
@@ -730,6 +968,7 @@ class Game:
             self.opponent = self._name(self.pool[-1])
         else:
             self.opponent_id = self.opponent = "the last Career"
+        self.opp_max = self.opp_health = OPPONENT_HEALTH["nemesis" if self.opponent_id == self.nemesis else "other"]
         rest = [t for t in self.pool if t != self.opponent_id]
         rest_allies = [a for a in self.allies if a != self.opponent_id]
         self.pool = [t for t in self.pool if t == self.opponent_id]
@@ -742,71 +981,66 @@ class Game:
                 line += f" One of them is {self.nemesis_name}."
             self._say(line, "cannon")
         self.card = DUEL
-        self.duel_wins = self.duel_losses = 0
+        self.exchanges = 0
         self.days[self.day].append("⚔️")
-        text = f"Two tributes left. You, and {self.opponent}, face to face on the horn. First to win two rounds."
-        self._say(text + " " + self._edge_text(), "event")
+        self._say(f"Two tributes left. You, and {self.opponent}, face to face on the horn. You have {self.health} "
+                  f"health. They have {self.opp_health}. Watch which side they wind up on, and block it.", "event")
 
-    def _edge_text(self) -> str:
-        good = [f"{e} {label}" for label, e, v, _ in self._edges() if v > 0]
-        bad = [f"{e} {label}" for label, e, v, _ in self._edges() if v < 0]
-        text = f"Your edge: {', '.join(good)}." if good else "You have no edge. Only nerve."
-        if bad:
-            text += f" Against you: {', '.join(bad)}."
-        return text
-
-    def _edges(self) -> list[tuple[str, str, int, set]]:
-        out = []
+    def _weapon(self) -> str | None:
         weapons = [w for w in self.kit if w in lore.WEAPONS]
-        if weapons:
-            w = max(weapons, key=lambda k: lore.WEAPONS[k])
-            out.append((f"your {lore.item_name(w)}", lore.item_emoji(w), lore.WEAPONS[w], {"press"}))
-        hw = health_word(self.health)
-        hv = {"Good": 15, "Fair": 0, "Poor": -15, "Very poor": -25}[hw]
-        if hv:
-            out.append(("good health" if hv > 0 else f"{hw.lower()} health", "❤️", hv, {"press", "hold"}))
-        if self.kills >= 2:
-            out.append((f"{self.kills} kills behind you", "⚔️", 10, {"press"}))
-        if self.district == 2:
-            out.append(("Career training", "🛡️", 10, {"press"}))
-        if "rope" in self.kit:
-            out.append(("the high ground", "🪢", 15, {"hold"}))
-        if self.supplies >= 2:
-            out.append(("a full stomach", "🎒", 10, {"hold"}))
-        if self.opponent_id == self.nemesis:
-            v = min(15, 3 * self.nemesis_kills)
-            out.append((f"their {self.nemesis_kills} kills", "🩸", -v, {"press", "hold"}))
-        return out
+        return max(weapons, key=lambda k: lore.WEAPONS[k]) if weapons else None
 
-    def _duel_chance(self, how: str) -> int:
-        return max(5, min(95, DUEL_BASE + sum(v for _, _, v, a in self._edges() if how in a)))
+    def _fight_deal(self, stance: str) -> int:
+        w = self._weapon()
+        bonus = (lore.WEAPONS[w] if stance == "aggressive" else lore.WEAPONS[w] // 2) if w else 0
+        tired = 2 if self.exchanges >= FIGHT_TIRED else 1
+        return (FIGHT[stance][0] + bonus + min(FIGHT_KILLS_CAP, FIGHT_PER_KILL * self.kills)) * tired
+
+    def _fight_take(self, stance: str) -> int:
+        tired = 2 if self.exchanges >= FIGHT_TIRED else 1
+        return (FIGHT[stance][1] + (FIGHT_NEMESIS_HIT if self.opponent_id == self.nemesis else 0)) * tired
+
+    def _fight_params(self, stance: str) -> dict:
+        w = self._weapon()
+        return mg.fight_params(_rng(self.salt, "fight", self.exchanges), stance, self.opponent_id == self.nemesis,
+                               "rope" in self.kit, lore.WEAPONS[w] if w else 0, self.exchanges)
 
     def _duel_options(self) -> list[dict]:
         out = []
-        for i, (how, label, tag) in enumerate((("press", "Press the attack", "bold"), ("hold", "Hold your ground", "safe"))):
-            edges = [f"{lbl[0].upper()}{lbl[1:]} {_sign(v)}" for lbl, _, v, a in self._edges() if how in a]
-            hint = " · ".join(edges) if edges else "Nothing on your side but luck."
-            dmg = DUEL_HIT[how]
-            win = ["👑"] if self.duel_wins == 1 else ["round won"]
-            lose = [f"❤️−{dmg}"] + (["☠️"] if self.duel_losses == 1 or dmg >= self.health else [])
-            out.append(self._opt(i, label, hint, self._duel_chance(how), tag, win, lose))
+        w = self._weapon()
+        for i, (stance, label, tag) in enumerate((("aggressive", "Press the attack", "bold"), ("careful", "Hold your ground", "safe"))):
+            bits = ["Short block, heavy strike." if stance == "aggressive" else "Wide block, light strike."]
+            if w:
+                bits.append(f"Your {lore.item_name(w)}: a longer strike.")
+            if "rope" in self.kit:
+                bits.append("Rope: a wider block.")
+            deal, take = self._fight_deal(stance), self._fight_take(stance)
+            win = ["👑"] if deal >= self.opp_health else [f"🩸 them −{deal}"]
+            lose = [f"❤️−{take}"] + (["☠️"] if take >= self.health else [])
+            out.append(self._opt(i, label, " ".join(bits), None, tag, win, lose, minigame=self._fight_params(stance)))
         return out
 
-    def _resolve_duel(self, index: int) -> str | None:
-        how = ("press", "hold")[index]
-        _, ok, near = self._reveal(self._duel_chance(how))
-        if ok:
-            self.duel_wins += 1
-            self._say(self._pick("You drive them back across the gold.", "Your blow lands. They stagger.") if how == "press"
-                      else self._pick("They come at you and overreach. You make them pay.", "You hold. They tire first."), "result")
+    def _resolve_duel(self, index: int, param=None, game: dict | None = None) -> str | None:
+        stance = ("aggressive", "careful")[index]
+        blocked, struck = mg.fight_run(game, mg.clean_fight(param))
+        deal, take = self._fight_deal(stance), self._fight_take(stance)
+        self.exchanges += 1
+        if struck:
+            self._played("fight", True, "BLOCKED · HIT", f"them −{deal}")
+            self.opp_health = max(0, self.opp_health - deal)
+            self._say(self._pick("You turn their blade and drive yours in.", "You catch the blow and answer it. They stagger.",
+                                 "Steel on steel, then your strike lands."), "result")
+        elif blocked:
+            self._played("fight", True, "BLOCKED", "no opening")
+            self._say(self._pick("You turn the blow, but they're back on guard before you can answer.",
+                                 "You catch it. Neither of you gives an inch."), "result")
         else:
-            self.duel_losses += 1
-            dmg = DUEL_HIT[how] // (2 if near else 1)
-            self._say(("Close. " if near else "") + self._pick("They're faster than you.", "You slip on the wet gold."), "result")
-            self._hurt(dmg, f"{self.opponent}, in the final duel")
+            self._played("fight", False, "HIT", f"you −{take}")
+            self._say(self._pick("They're faster than you.", "You guess wrong, and it costs you.", "You slip on the wet gold."), "result")
+            self._hurt(take, f"{self.opponent}, in the final fight")
             if self.over:
                 return None
-        if self.duel_wins == 2:
+        if self.opp_health <= 0:
             self._say(self._pick("It's over. The trumpets sound.", "They fall. You don't."), "result")
             if self.opponent_id in self.allies:
                 self.allies.remove(self.opponent_id)
@@ -814,12 +1048,9 @@ class Game:
             self.kills += 1
             self.new_kills.append(self.opponent)
             self._win()
-        elif self.duel_losses == 2:
-            self._die(f"{self.opponent}, in the final duel")
-        else:
-            rnd = self.duel_wins + self.duel_losses + 1
-            return f"Round {rnd} of 3. You {self.duel_wins}, {self.opponent} {self.duel_losses}. {self._edge_text()}"
-        return None
+            return None
+        tired = " You're both exhausted now: every blow counts double." if self.exchanges == FIGHT_TIRED else ""
+        return f"{self.opponent}: {self.opp_health} health. You: {self.health}.{tired}"
 
     # ------------------------------------------------------------------ effects
     def _apply(self, e: dict, card: dict, near: bool = False) -> str | None:
@@ -855,7 +1086,7 @@ class Game:
             self.allies.append(self.partner)
         if "health" in e:
             if e["health"] < 0:
-                dmg = round(-e["health"] * DAMAGE)
+                dmg = self._card_damage(e["health"])
                 self._hurt(dmg // 2 if near else dmg, cause)
             else:
                 self.health = min(100, self.health + e["health"])
@@ -1074,7 +1305,7 @@ class Game:
             "remaining": self.remaining,
             "allies": list(self.allies),
             "can_use": "medkit" if self.can_use_medkit() else None,
-            "duel": [self.duel_wins, self.duel_losses] if self.card == DUEL else None,
+            "fight": {"them": self.opp_health, "max": self.opp_max, "name": self.opponent} if self.card == DUEL else None,
         }
 
     def emoji_row(self) -> str:

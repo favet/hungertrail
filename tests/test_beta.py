@@ -1,12 +1,18 @@
+import json
 import random
+import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from hungertrail.app import app
 from hungertrail.beta import engine, lore
-from hungertrail.beta.bots import BOTS, play
-from hungertrail.beta.engine import DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SWAP, USE, Game, cards, new_setup, replay
+from hungertrail.beta import minigames as mg
+from hungertrail.beta.bots import BOTS, hands, play
+from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SIFT, SIFT_BIG, SIFT_SMALL, SIFT_STOP, SWAP, USE,
+                                     Game, cards, new_setup, replay)
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
 KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies"}
@@ -18,7 +24,8 @@ def _run(seed, salt, choices_from=None):
     r = random.Random(seed)
     picks = []
     while not g.over:
-        idx, param = BOTS["random"](g, r)
+        idx = BOTS["random"](g, r)
+        param = hands(g, idx, 0.5, r)
         picks.append([idx, param])
         g.choose(idx, param)
     return g, picks
@@ -108,23 +115,134 @@ def test_kills_take_the_named_tribute():
     assert g.fallen_today[-1] not in g.pool
 
 
-def test_duel_is_best_of_three_with_edges():
+def test_final_fight_runs_on_health():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
     g.kit = ["bow", "rope"]
     g.allies = []
     g._start_duel()
-    assert g.card == DUEL and g.opponent_id == g.nemesis and g.remaining == 2
-    text = g.log[-1]["text"]
-    assert "your bow" in text and "the high ground" in text and "kills" in text
+    assert g.card == DUEL and g.opponent_id == g.nemesis and g.remaining == 2 and g.opp_health == 100
     press, hold = g.options()
-    assert "Your bow +15" in press["hint"] and "The high ground +15" in hold["hint"]
-    for _ in range(3):
-        if g.over:
-            break
-        g.choose(0)
-    assert g.over and (g.won or g.cause.endswith("in the final duel"))
-    assert g.duel_wins + g.duel_losses <= 3
+    assert press["minigame"]["game"] == "fight" and "Your bow" in press["hint"] and "Rope" in hold["hint"]
+    # Rope widens the block; the same exchange has the same tell whichever stance you pick.
+    assert press["minigame"]["side"] == hold["minigame"]["side"]
+    assert hold["minigame"]["block"][1] - hold["minigame"]["block"][0] > press["minigame"]["block"][1] - press["minigame"]["block"][0]
+    p = press["minigame"]
+    g.choose(0, [p["block"][0], p["side"], p["open"][0]])  # a clean block, then a strike
+    assert g.opp_health == 100 - g._fight_deal("aggressive") + 0 or g.over
+    assert g.log[-2]["kind"] in ("roll", "result")
+    health = g.health
+    p = g.options()[1]["minigame"]
+    g.choose(1, [p["block"][0], 1 - p["side"], -1])  # blocked the wrong side
+    assert g.health == health - g._fight_take("careful")
+    while not g.over:
+        p = g.options()[0]["minigame"]
+        g.choose(0, [p["block"][0], p["side"], p["open"][0]])
+    assert g.won and g.opp_health == 0
+
+
+def test_hunting_is_replayed_from_the_taps():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.kit = ["bow"]
+    g.arena.offers[2] = ["ridge", "stream", "horn"]
+    ridge = next(o for o in g.options() if o["place"] == "ridge")
+    hunt = ridge["minigame"]
+    assert hunt["game"] == "hunt" and len(hunt["shots"]) == 3
+    # Aim every arrow at the deer's centre on its first tick... the first one lands, the rest find rabbits or miss.
+    s0 = hunt["shots"][0]
+    deer = next(a for a in s0["animals"] if a["kind"] == "deer")
+    tap = next(t for t in range(s0["duration"]) if abs(mg.tri(s0["speed"] * t) - mg.path_at(deer["path"], t)) < 100)
+    food, hits = mg.hunt_run(hunt, [tap, -1, -1])
+    assert hits == ["deer", None, None] and food == 2
+    before = g.supplies
+    g.choose(ridge["index"], [tap, -1, -1])
+    assert g.supplies == before + 2
+    g2 = Game(5, 9, SETUP)
+    g2.choose(len(g2.arena.layout))
+    g2.kit = ["bow"]
+    g2.arena.offers[2] = ["ridge", "stream", "horn"]
+    with pytest.raises(ValueError):
+        g2.choose(ridge["index"], [1, 2, 3, 4])  # four taps for three arrows
+
+
+def test_fishing_and_hiding_inputs_are_checked():
+    p = mg.fish_params(random.Random(1), "minnow", 2200)
+    with pytest.raises(ValueError):
+        mg.clean_toggles([5, 3], p["duration"])
+    with pytest.raises(ValueError):
+        mg.clean_toggles([p["duration"]], p["duration"])
+    with pytest.raises(ValueError):
+        mg.clean_toggles(list(range(mg.MAX_INPUTS + 1)), 10_000)
+    assert mg.fish_run(p, [])[0] in (True, False)
+    h = mg.hide_params(random.Random(2), 70, 0, 0, False)
+    assert mg.hide_run(h, [])[0] == "spotted"  # never ducking means the light finds you
+    assert mg.hide_run(h, [0])[0] == "gasp"  # never breathing means you gasp
+    assert mg.hide_run(h, mg.bot_hide(h, 1.0, random.Random(3)))[0] == "hidden"
+
+
+def test_hide_is_fair():
+    """Every hold-still layout leaves time to breathe between passes."""
+    for i in range(200):
+        for base in (60, 65, 70):
+            p = mg.hide_params(random.Random(i), base, 0, 200, i % 2 == 0)
+            cover = mg._cover(p["path"], p["me"], p["half"], p["duration"])
+            assert cover and all(b - a < p["breath"] for a, b in cover)
+
+
+def test_sift_at_the_horn():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.arena.offers[2] = ["stream", "horn", "open"]
+    g.supplies = 3
+    horn = next(o for o in g.options() if o["place"] == "horn")
+    g.choose(horn["index"])
+    assert g.card == SIFT and [o["label"] for o in g.options()] == ["Dig quietly", "Dig loudly", "Leave the rubble"]
+    g.choose(0)
+    assert g.supplies == 2 and g.sift["digs"] == 3
+    view = g.sift_view()
+    assert len(view["tiles"]) == 25 and not any(t["open"] for t in view["tiles"])
+    assert "item:" not in str(view) and "career" not in str(view)  # nothing under the rubble leaks
+    tiles = g.sift["tiles"]
+    food = tiles.index("food")
+    g.choose(SIFT_SMALL + food)
+    assert g.supplies == 3 and g.sift_view()["tiles"][food]["emoji"] == "🥫"
+    g.choose(SIFT_BIG + 12 if 12 != food else SIFT_BIG + 0)
+    if not g.over and g.card == SIFT:
+        g.choose(SIFT_STOP)
+    assert g.over or g.card != SIFT
+
+
+def test_python_and_browser_minigames_agree():
+    """The browser's minigames.js must reach the same result as the server on the same inputs."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    r = random.Random(7)
+    cases = []
+    for i in range(30):
+        f = mg.fish_params(random.Random(i), ("minnow", "trout", "leech")[i % 3], 2200 + 800 * (i % 2))
+        ft = mg.bot_fish(f, r.random(), r)
+        cases.append(["fish", f, ft, list(mg.fish_run(f, ft))])
+        h = mg.hunt_params(random.Random(i), ("bow", "spear")[i % 2], i % 3 == 0)
+        ht = mg.bot_hunt(h, r.random(), r)
+        food, hits = mg.hunt_run(h, ht)
+        cases.append(["hunt", h, ht, [food, hits]])
+        d = mg.hide_params(random.Random(i), 60 + i % 15, 0, 0, i % 2 == 0)
+        dt = mg.bot_hide(d, r.random(), r)
+        cases.append(["hide", d, dt, list(mg.hide_run(d, dt))])
+        x = mg.fight_params(random.Random(i), ("careful", "aggressive")[i % 2], i % 2 == 0, i % 3 == 0, 12, i % 5)
+        xt = mg.bot_fight(x, r.random(), r)
+        cases.append(["fight", x, xt, list(mg.fight_run(x, xt))])
+    js = Path(__file__).parents[1] / "src/hungertrail/static/beta/minigames.js"
+    script = (
+        f"const Sim = require({json.dumps(str(js))});"
+        "const cases = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+        "const run = {fish: Sim.fishRun, hunt: Sim.huntRun, hide: Sim.hideRun, fight: Sim.fightRun};"
+        "console.log(JSON.stringify(cases.map(([k, p, inp]) => run[k](p, inp))));"
+    )
+    out = subprocess.run([node, "-e", script], input=json.dumps(cases), capture_output=True, text=True, check=True)
+    assert json.loads(out.stdout) == [c[3] for c in cases]
 
 
 def test_places_are_seeded_and_the_edge_closes():
@@ -143,12 +261,11 @@ def test_edge_brings_the_gamemakers():
         if g.card != PLACES:
             break
         edge = [o for o in g.options() if o["place"] in EDGE]
-        if not edge:
-            g.choose(g.options()[0]["index"], 1)
-        else:
-            g.choose(edge[0]["index"], 1)
+        pick = (edge or g.options())[0]["index"]
+        g.choose(pick, hands(g, pick, 0.5, random.Random(1)))
         while not g.over and g.card not in (PLACES,) and not g.card.startswith("gm_"):
-            g.choose(g.options()[0]["index"], 1)
+            pick = g.options()[-1 if g.card == SIFT else 0]["index"]
+            g.choose(pick, hands(g, pick, 0.5, random.Random(1)))
         if g.card.startswith("gm_"):
             break
     if not g.over:
@@ -206,11 +323,14 @@ def test_beta_full_run_and_board():
     v = client.post("/api/beta/run", json={"mode": "daily", "district": 7, "partner": "Jake", "allies": ["Gingi"]}).json()
     assert v["layout"] and v["card"] == "draft" and "seed" not in str(v)
     r = random.Random(1)
-    for _ in range(80):
+    for _ in range(150):
         if v["over"]:
             break
         o = r.choice(v["options"])
-        res = client.post("/api/beta/run/choose", json={"token": v["token"], "index": o["index"], "param": 2})
+        game = o.get("minigame")
+        param = {"fish": lambda p: mg.bot_fish(p, 0.5, r), "hunt": lambda p: mg.bot_hunt(p, 0.5, r),
+                 "hide": lambda p: mg.bot_hide(p, 0.5, r), "fight": lambda p: mg.bot_fight(p, 0.5, r)}[game["game"]](game) if game else None
+        res = client.post("/api/beta/run/choose", json={"token": v["token"], "index": o["index"], "param": param})
         assert res.status_code == 200, res.text
         v = res.json()
     assert v["over"] and "beta.hungertrail.com" in v["result"]["share"]

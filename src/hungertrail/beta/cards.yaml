@@ -8,6 +8,8 @@
 # Option:  label, hint, tag (safe|bold|hide), need {item|any|perk (district)|ally|supplies}
 #          then EITHER  text + effects
 #          OR           roll {base, mods: [combat|escape|stealth|forage|swim]} + success + fail
+#          minigame: hide on a rolled option plays "hold still" instead of rolling (the roll's base
+#          sets how wide the searcher's light is); success and fail are the same.
 # Effects: health supplies (+/-), add/remove (item or list), kill (n), sponsor (a silver
 #          parachute: what you need most), gift (a random found item),
 #          ally (dies|lost|joins_partner), die (cause), cause (if this outcome kills you),
@@ -288,6 +290,7 @@
   text: Voices. The Career pack, four strong, coming straight down the path toward you.
   options:
   - label: Hide in the brush
+    minigame: hide
     hint: Don't breathe.
     tag: hide
     roll:
@@ -1500,6 +1503,7 @@
         health: -45
         cause: an ambush at the Feast
   - label: Wait for the crowd to thin
+    minigame: hide
     tag: safe
     roll:
       base: 65
@@ -1732,6 +1736,7 @@
   text: Footsteps on the rock right above your hiding place. They stop.
   options:
   - label: Hold your breath
+    minigame: hide
     tag: hide
     roll:
       base: 70
@@ -2352,6 +2357,7 @@
   options:
   - label: Stay still
     tag: hide
+    minigame: hide
     roll:
       base: 70
       mods:
@@ -2360,8 +2366,7 @@
       text: They walk on. Now you know what you're up against.
       effects: {}
     fail:
-      text: They see you. They smile. They cut you once
-      just to remember you by.: null
+      text: "They see you. They smile. They cut you once, just to remember you by."
       effects:
         health: -18
         cause: '{nemesis}'
@@ -2403,8 +2408,7 @@
       mods:
       - combat
     success:
-      text: The Capitol's favorite killer falls
-      and the Capitol has a new favorite.: null
+      text: "The Capitol's favorite killer falls, and the Capitol has a new favorite."
       effects:
         kill: 1
         sponsor: true

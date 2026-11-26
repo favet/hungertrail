@@ -16,8 +16,9 @@ from ..daily import daily_for, seed_for
 from ..runs import RunError, _clean_name, ordinal
 from . import lore
 from .engine import Game, new_setup, replay
+from .minigames import MAX_INPUTS
 
-VERSION = "b2"
+VERSION = "b3"  # b3: minigames replay from inputs, so b2 runs can't be replayed
 
 
 def _mac(settings: Settings, body: bytes) -> str:
@@ -81,13 +82,16 @@ def load(settings: Settings, token: str) -> tuple[Game, dict]:
     return _build(settings, p), p
 
 
-def choose(settings: Settings, token: str, index: int, param: int | None) -> tuple[str, Game, dict]:
+def choose(settings: Settings, token: str, index: int, param: int | list[int] | None) -> tuple[str, Game, dict]:
     p = decode(settings, token)
     with _lock:
         if len(p["c"]) < _latest.get(p["id"], 0):
             raise RunError("This run has already moved on. Reload to continue it.")
     game = _build(settings, p)
-    param = None if param is None else max(0, min(3, int(param)))
+    if isinstance(param, list):
+        param = [int(x) for x in param[:MAX_INPUTS]]  # a minigame's inputs; the engine checks them
+    elif param is not None:
+        param = int(param)
     try:
         game.choose(int(index), param)
     except ValueError as e:
@@ -140,6 +144,7 @@ def view(settings: Settings, token: str, game: Game, p: dict) -> dict:
         "log": game.log,
         "card": game.card,
         "options": game.options(),
+        "sift": game.sift_view(),
         "over": game.over,
         "result": result(settings, game, p),
     }

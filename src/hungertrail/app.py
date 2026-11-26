@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -215,8 +216,13 @@ def beta_view(body: TokenBody):
     return _beta_view(body.token, game, p)
 
 
+class BetaChooseBody(TokenBody):
+    index: int
+    param: int | Annotated[list[int], Field(max_length=400)] | None = None
+
+
 @app.post("/api/beta/run/choose")
-def beta_choose(body: ChooseBody):
+def beta_choose(body: BetaChooseBody):
     try:
         token, game, p = beta_runs.choose(settings, body.token, body.index, body.param)
     except runs.RunError as e:
