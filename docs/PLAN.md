@@ -81,17 +81,53 @@ rubble today. No game relies on sound.
 - Hold still (some event options, marked 🤫): hold to stay down while a searcher's light sweeps.
   Breath runs out while you hold, so you breathe in the gaps. The nemesis searches slower and
   wider.
-- The sift (the horn): a 5x5 grid of rubble, dug quietly (3 digs, costs a day of supplies) or
-  loudly (6 digs, Careers hide in it). ✨ means something good next door, 🔥 a trap. A Capitol map
-  marks the items and shows tomorrow's places. Each dig is a choice, so the grid stays secret.
+- The sift (the horn), after Slay the Spire's Crystal Sphere: a 9x9 field of rubble with shapes
+  buried in it (a 3x3 crate, a 3x1 weapon, 2x2 packs, cans, a mine and a snare). Dig quietly (4
+  digs for a day of food) or loudly (6 digs, and Careers hide in the rubble). A small dig opens one
+  tile, a big dig a 3x3. A find is yours only once every tile of it is dug out. The layout comes
+  from the daily seed and each dig is a choice, so it stays on the server.
 - The final fight runs on health: yours against theirs (70, the nemesis 100). Each exchange you
   press or hold; then watch which side they wind up on, block it as the ring closes, and strike in
   the gap. Feints and faster swings come as it drags on; from exchange 10 every blow counts double.
-- Bots play the minigames with a skill from 0 to 1 (smart 0.65, casual 0.4). Report: smart about
-  40%, casual about 19%, random about 7%, hider under 1%. Human playtests should set the skills.
+- Bots play the minigames with a skill from 0 to 1 (smart 0.65, casual 0.4).
 
-Not in beta 3: the sprint, the wheel for the remaining rolls, the crowd and sponsor menu, the 3x
-multiplier, the seeded day plan.
+### Beta 3, second half (2026-11-26): see everything, and a different day every time
+
+Justin's playtest: the green and red were weak, text flew by, items and stats meant nothing, the
+horn draft was confusing, the sift wasn't the Crystal Sphere, there was no wheel, too many emoji,
+and the same three places at the end.
+
+- The wheel: every roll is a spin you watch (`static/beta/wheel.js`). Green wins, yellow is a
+  close call that halves the damage (only when half the damage leaves you standing), red loses.
+  Each edge (weapon, ally, wounds, perk) is its own labeled slice. The server rolls; the wheel lands
+  on that roll.
+- One scene at a time: the log stops at each scene with Continue. Past scenes and days fold.
+- The horn draft: three rings, each with its odds and what a miss costs, in words. Up to two grabs.
+  A close call still gets the item and you can grab again; a miss ends it.
+- Stakes in plain words ("−20 health", "+1 food", "could kill you"), not emoji chips. Options an
+  item you don't have would unlock show greyed ("Needs rope."). Item text says what it lets you do.
+- Hunger: hungry nights in a row cost 10, 20, 30 (District 12 half), and the status bar says what
+  tonight costs before you choose. The death recap tells the chain: the big hits, the hungry
+  nights, the last choice.
+- The crowd: stars 0 to 5 (District 1 starts with 2). A long shot (40% or less) that lands or a
+  kill earns one; playing to the cameras in the open earns two; walking away costs one. The ⭐ in
+  the status bar opens the sponsor menu: food, medicine, a knife, rope, a bow, priced in stars, one
+  parachute a night, and each order raises every price. Unspent stars add 10% each to the score.
+- The multiplier is back: Careers ×1, districts 3 and 5-10 ×2, 11 and 12 ×3 (and they start with
+  one day of food).
+- The day plan from the seed (`Arena`): the nemesis is sighted from day 2 to 5 at two places and
+  clashes 2-3 days later at two more; Caesar spreads the rumor the night before and the places say
+  "seen here". One of four finales (flood, fire, mutts, fog), hinted the night before day 7. The
+  edge closes on day 6 except the finale's refuge, so days 6 and 7 offer different places. A twist
+  of the day (generous sponsors, a cold front, a full stream, a restless crowd). Each night says
+  tomorrow's places.
+- Bugs fixed: the betrayal kill, mercy counted as a kill, the medkit at the full-pack screen, the
+  horn card's text, the near miss ending the draft, "Close call" on a hit that kills.
+- Bots (2,000 runs): smart 46%, casual 23%, random 7%, hider 0.3%.
+
+Left for beta 4: the sprint, the card audit (no option that only hurts, no free walk-away), lower
+damage, the nemesis arc you can wound or avoid, district perks hooked to minigames, a score that
+separates runs.
 
 ## Design answers
 

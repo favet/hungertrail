@@ -9,7 +9,7 @@ from collections import Counter
 
 from . import lore
 from . import minigames as mg
-from .engine import DRAFT, DUEL, PLACES, SIFT, SIFT_BIG, SIFT_SMALL, SIFT_STOP, SWAP, USE, Game, new_setup
+from .engine import DRAFT, DUEL, PLACES, SIFT, SIFT_BIG, SIFT_SMALL, SIFT_STOP, SWAP, USE, Game, new_setup  # noqa: F401
 
 VALUE = {"trident": 9, "bow": 9, "spear": 7, "axe": 6, "rope": 6, "medkit": 5, "knife": 5, "sleeping_bag": 4, "iodine": 4}
 
@@ -87,10 +87,23 @@ def sifter(g: Game, r: random.Random, greedy: bool = False):
     return SIFT_BIG + best
 
 
+def shopper(g: Game):
+    """Spend stars on what keeps you alive: medicine when hurt, food when there's none."""
+    menu = {m["key"]: m for m in g.sponsor_menu() if m["can"]}
+    if g.health < 50 and "medicine" in menu:
+        return menu["medicine"]["index"]
+    if g.supplies == 0 and "food" in menu:
+        return menu["food"]["index"]
+    return None
+
+
 def smart(g: Game, r: random.Random):
     """Reads the stakes on screen the way an attentive player would."""
     if g.can_use_medkit() and g.health < 45:
         return USE
+    buy = shopper(g)
+    if buy is not None:
+        return buy
     opts = g.options()
     if g.card == SIFT:
         return sifter(g, r)
@@ -111,7 +124,7 @@ def smart(g: Game, r: random.Random):
         # Heavy strikes while you can afford to take a hit; guard when you can't.
         aggressive, careful = opts
         take = g._fight_take("aggressive")
-        return aggressive["index"] if g.health > take * 2 or "👑" in aggressive["win"] else careful["index"]
+        return aggressive["index"] if g.health > take * 2 or "you win" in aggressive["win"] else careful["index"]
     if g.card == PLACES:
         by = {o["place"]: o for o in opts}
         safe_from_gm = {k: o for k, o in by.items() if not any("Gamemakers" in x for x in o["lose"])}
@@ -135,7 +148,7 @@ def smart(g: Game, r: random.Random):
         v = c
         if o["deadly"]:
             v -= 40
-        v -= 5 * sum(1 for x in o["lose"] if x.startswith("❤️"))
+        v -= 5 * sum(1 for x in o["lose"] if x.endswith(" health"))
         v += 5 * len(o["win"])
         return v
 
@@ -188,6 +201,9 @@ def report(n: int = 2000) -> None:
         nem = sum(g.opponent_id == g.nemesis for g in games) / n
         print(f"{name:7} win {wins:5.1%}  place {place:4.1f}  steps {steps:4.1f}  gamemakers {gm:4.0%}  duel {duel:4.0%} (vs nemesis {nem:4.0%})")
         print("        deaths:", ", ".join(f"{c} {k / n:.0%}" for c, k in causes))
+        stars = statistics.mean(g.stars for g in games)
+        bought = statistics.mean(g.bought for g in games)
+        print(f"        stars at the end {stars:.1f}, parachutes bought {bought:.1f}, score {statistics.mean(g.score() for g in games):.0f}")
 
 
 def districts(n: int = 1500) -> None:

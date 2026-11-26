@@ -102,7 +102,8 @@ function buildReaping() {
     dg.append(el("button", { class: "district", "data-id": d.id, onclick: () => chooseDistrict(d.id) },
       el("span", { class: "num", text: d.id }),
       el("span", { class: "name", text: d.name }),
-      el("span", { class: "perk", text: d.perk })));
+      el("span", { class: "perk", text: d.perk }),
+      el("span", { class: "mult", text: "×" + d.mult })));
   }
   $("#name-partner").value = last.partner || "";
   $("#name-partner").placeholder = CFG.names[Math.floor(Math.random() * CFG.names.length)];
@@ -115,7 +116,9 @@ function chooseDistrict(id) {
   pick.district = id;
   $$(".district").forEach((b) => b.classList.toggle("on", String(b.dataset.id) === String(id)));
   const d = CFG.districts.find((x) => x.id === id);
-  $("#perk-desc").replaceChildren(...(d ? [el("b", { text: `District ${d.id} · ${d.perk}: ` }), d.desc] : ["Tap a district to see its edge."]));
+  $("#perk-desc").replaceChildren(...(d ? [el("b", { text: `District ${d.id} · ${d.perk}: ` }), d.desc,
+    el("span", { class: "multnote", text: d.mult === 1 ? " Scores ×1: the Capitol's favorites start strong." : d.mult === 2 ? " Scores ×2." : " Scores ×3: you start with only 1 day of food." })]
+    : ["Tap a district to see its edge. Poorer districts score more."]));
   $("#btn-start").disabled = !id;
 }
 
@@ -173,6 +176,27 @@ function slotInfo(k, s) {
   pop.hidden = false;
 }
 
+// The sponsors: the crowd's stars pay for a parachute, which drops that night.
+function openSponsors(s) {
+  const pop = $("#slotpop");
+  const rows = s.menu.map((m) => {
+    const b = el("button", { class: "buy", onclick: () => { pop.hidden = true; send(m.index, null); } },
+      el("span", { class: "bname", text: `${m.icon} ${m.label}` }),
+      el("span", { class: "bprice", text: m.note || `⭐ ${m.price}` }));
+    b.disabled = !m.can || busy;
+    return b;
+  });
+  pop.replaceChildren(
+    el("p", {}, el("b", { text: `Sponsors · ⭐ ${s.stars} of ${s.stars_max}` })),
+    el("p", { class: "dim small", text: s.order
+      ? `Tonight's parachute: ${s.order.split(":")[0].toLowerCase()}. One a night.`
+      : "Your stars pay for one parachute a night. It drops at nightfall. Every star you keep adds 10% to your score." }),
+    el("div", { class: "buylist" }, ...rows),
+    el("p", { class: "dim small", text: "Earn stars with long shots that land, kills, and playing to the cameras. Walking away costs one." }),
+    el("button", { text: "Close", onclick: () => (pop.hidden = true) }));
+  pop.hidden = false;
+}
+
 let lastStatus = null;
 
 function statusBar(s) {
@@ -199,6 +223,10 @@ function statusBar(s) {
     if (s.supplies !== prev.supplies) food.classList.add("pulse", s.supplies > prev.supplies ? "up" : "down");
   }
   if (to < from) requestAnimationFrame(() => setTimeout(() => { const g = $(".ghost", hpBar); if (g) g.style.width = to + "%"; }, 450));
+  if (s.menu && s.menu.some((m) => m.can) && !(prev && prev.menu && prev.menu.some((m) => m.can))) {
+    const k = "tip.sponsors";
+    if (!store.get(k)) { store.set(k, true); setTimeout(() => toast("Tip: tap ⭐ to spend the crowd's stars on a sponsor gift."), 1200); }
+  }
   // The first time the medkit can be used, say how.
   if (s.can_use === "medkit" && !(prev && prev.can_use)) {
     const k = "tip.medkit";
@@ -206,7 +234,8 @@ function statusBar(s) {
   }
   lastStatus = s;
   const who = [s.kills ? `⚔️ ${s.kills}` : "", s.allies.length ? "🤝 " + s.allies.join(", ") : ""].filter(Boolean).join(" · ");
-  let whoEl = el("span", { class: "who", text: who });
+  // With nothing to eat, what tonight will cost takes the place of who's with you.
+  let whoEl = s.hunger ? el("span", { class: "who hunger", text: `No food: −${s.hunger} ❤️ tonight` }) : el("span", { class: "who", text: who });
   if (s.fight) {
     // The final fight: their health, next to yours.
     const fb = el("span", { class: "hbar foebar" });
@@ -221,6 +250,9 @@ function statusBar(s) {
   return [
     el("div", { class: "row1" },
       el("span", { class: "when", text: s.fight ? `Day ${s.day} · Final fight` : `Day ${s.day} · ${s.remaining} left` }),
+      el("button", { class: "stars" + (s.order ? " ordered" : "") + (s.menu && s.menu.some((m) => m.can) ? " can" : ""),
+        title: "The crowd's stars: spend them on sponsor gifts", onclick: () => openSponsors(view.status) },
+        "⭐ ", el("b", { text: s.stars }), s.order ? el("small", { text: " 🪂 tonight" }) : null),
       whoEl,
       el("button", { class: "mute", title: "Sound", text: Sound.on() ? "🔊" : "🔇", onclick: (e) => { Sound.toggle(); e.target.textContent = Sound.on() ? "🔊" : "🔇"; } })),
     el("div", { class: "row2" }, hp, food, el("span", { class: "kit" }, ...slots)),
@@ -346,9 +378,10 @@ function scrollToScene() {
 function applyDelta(text) {
   if (!lastStatus) return;
   const num = (re) => { const m = text.match(re); return m ? (m[1] === "+" ? 1 : -1) * +m[2] : 0; };
-  const dh = num(/❤️\s*([+−-])(\d+)/), ds = num(/🎒\s*([+−-])(\d+)/);
-  if (!dh && !ds) return;
-  const s = { ...lastStatus, health: Math.max(0, lastStatus.health + dh), supplies: Math.max(0, lastStatus.supplies + ds) };
+  const dh = num(/❤️\s*([+−-])(\d+)/), ds = num(/🎒\s*([+−-])(\d+)/), dst = num(/⭐\s*([+−-])(\d+)/);
+  if (!dh && !ds && !dst) return;
+  const s = { ...lastStatus, health: Math.max(0, lastStatus.health + dh), supplies: Math.max(0, lastStatus.supplies + ds),
+    stars: Math.max(0, (lastStatus.stars || 0) + dst) };
   $("#status").replaceChildren(...statusBar(s));
 }
 
@@ -441,6 +474,12 @@ function showOptions(v) {
   if (v.sift) box.append(siftGrid(v.sift, v.options, delay));
   if (v.card === "draft") return box.append(hornDraft(v, delay));
   v.options.filter((o) => o.dig == null).forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
+  // What an item you don't have would let you do here.
+  for (const l of v.locked || []) {
+    box.append(el("div", { class: "option locked appear", style: `animation-delay:${delay + 200}ms` },
+      el("span", { class: "key", text: "·" }),
+      el("span", { class: "label" }, el("span", { class: "ltext", text: l.label }), el("small", { class: "hint", text: "Needs " + l.needs + "." }))));
+  }
 }
 
 // The Cornucopia: three rings, two things in each. One line of rules, then each ring says its odds
@@ -501,6 +540,7 @@ function siftGrid(sf, options, delay) {
     if (i == null) return;
     (bigDig ? area(i) : [i]).forEach((j) => grid.children[j].classList.add("aim"));
   };
+  const labelled = new Set();  // one icon per buried shape, not one per tile
   sf.tiles.forEach((t, i) => {
     const cell = el("button", { class: "tile", "data-i": i });
     if (t.open) {
@@ -509,7 +549,7 @@ function siftGrid(sf, options, delay) {
       if (t.shape != null) {
         cell.classList.add(t.trap ? "trap" : t.done ? "done" : "piece");
         for (const side of t.edge) cell.classList.add("e" + side);
-        cell.append(el("span", { class: "what", text: t.icon }));
+        if (!labelled.has(t.shape)) { labelled.add(t.shape); cell.append(el("span", { class: "what", text: t.icon })); }
       }
     } else {
       cell.disabled = !digging;
@@ -562,14 +602,14 @@ function siftGrid(sf, options, delay) {
 function optionButton(o, i, delay, card) {
   const stakes = el("span", { class: "stakes" });
   if (o.place) {
-    // Places show what they're for and what they risk, not odds: the odds come with the event.
-    o.win.forEach((w) => stakes.append(el("span", { class: "win", text: w })));
-    o.lose.forEach((w) => stakes.append(el("span", { class: "lose" + (w.includes("Gamemakers") ? " deadly" : ""), text: w })));
+    // Places say what they're for and what they risk, in words. The odds come with the event.
+    stakes.append(el("span", { class: "win", text: "✓ " + o.win.join(", ") }));
+    stakes.append(el("span", { class: "lose" + (o.lose.some((w) => w.includes("Gamemakers") || w.includes("seen here")) ? " deadly" : ""), text: "✗ " + o.lose.join(", ") }));
   } else if (o.chance != null || (o.minigame && o.lose.length)) {
-    stakes.append(el("span", { class: "win", text: "✓ " + (o.win.length ? o.win.join(" ") : "you're fine") }));
-    stakes.append(el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + (o.lose.length ? o.lose.join(" ") : "nothing lost") }));
+    stakes.append(el("span", { class: "win", text: "✓ " + (o.win.length ? o.win.join(", ") : "you're fine") }));
+    stakes.append(el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + (o.lose.length ? o.lose.join(", ") : "nothing lost") }));
   } else if (o.win.length) {
-    stakes.append(el("span", { class: "win", text: "→ " + o.win.join(" ") }));
+    stakes.append(el("span", { class: "win", text: "→ " + o.win.join(", ") }));
   }
   const hint = o.place ? null : o.hint;  // places speak through their chips
   return el("button", { class: "option appear" + (o.place ? " where" : ""), style: `animation-delay:${delay + i * 60}ms`, onclick: () => pickOption(o) },
@@ -629,7 +669,7 @@ function showResults(v) {
     el("div", { class: "facts" },
       el("span", {}, el("b", { text: r.kills }), r.kills === 1 ? " kill" : " kills"),
       el("span", {}, "Day ", el("b", { text: r.day })),
-      el("span", {}, el("b", { text: r.score.toLocaleString() }), " pts")),
+      el("span", {}, el("b", { text: r.score.toLocaleString() }), ` pts (×${r.multiplier})`)),
     el("p", { class: "cause", text: r.won ? "Won the Hunger Games." : "Killed by " + r.cause + "." }),
     !r.won && r.recap ? el("p", { class: "recap dim", text: r.recap }) : null,
   ].filter(Boolean)

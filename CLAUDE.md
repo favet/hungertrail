@@ -39,7 +39,10 @@ targets: a good player (smart) about 40%, casual about 25%, random about 10-15%,
 and no single place much better than the smart bot. `DAMAGE`, `HIT_CAP`, `FIGHT`,
 `OPPONENT_HEALTH` and `OPEN_GIFT` in `beta/engine.py` are the main dials; the games' own numbers
 are in `beta/minigames.py`. Beta event cards need a `place`; the header of `beta/cards.yaml`
-documents the schema. An option with `minigame: hide` is played, not rolled.
+documents the schema. An option with `minigame: hide` is played, not rolled. Every roll goes
+through `_reveal`, which logs it for the wheel (`static/beta/wheel.js`). The daily script (nemesis
+days and places, finale, twist, place menus) lives in `Arena`. Bump `VERSION` in `beta/runs.py`
+when a change would alter runs in progress.
 
 Beta minigames are replayed: the browser sends input ticks, the server reruns the same integer
 simulation. `beta/minigames.py` and `static/beta/minigames.js` must stay in step

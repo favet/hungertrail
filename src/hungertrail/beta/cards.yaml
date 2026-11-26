@@ -1559,6 +1559,163 @@
         health: -16
         next: duel
         cause: the flood at the Cornucopia
+- id: fire_finale
+  kind: finale
+  emoji: 🔥
+  text: The Gamemakers set the whole arena alight at once. A wall of fire herds all {remaining} survivors toward
+    the Cornucopia.
+  options:
+  - label: Run ahead of it
+    tag: safe
+    roll:
+      base: 60
+      mods:
+      - escape
+    success:
+      text: You reach the horn with your eyebrows singed and your lungs raw. The fire stops at the sand.
+      effects:
+        next: duel
+    fail:
+      text: A burning branch comes down across your back.
+      effects:
+        health: -14
+        next: duel
+        cause: the fire at the end
+  - label: Go through the gap in the flames
+    hint: Faster, and someone on the far side won't see you coming.
+    tag: bold
+    roll:
+      base: 45
+      mods:
+      - combat
+    success:
+      text: The gap holds just long enough. On the far side, a tribute is still looking the other way.
+      effects:
+        kill: 1
+        next: duel
+        sponsor: true
+    fail:
+      text: The gap closes on you. You come out the other side burning.
+      effects:
+        health: -16
+        next: duel
+        cause: the fire at the end
+- id: mutt_finale
+  kind: finale
+  emoji: 🐺
+  text: Night falls at noon. Then the howling starts. The Gamemakers' mutts pour out of the trees, and the only
+    high ground left is the horn.
+  options:
+  - label: Race them to the horn
+    tag: safe
+    roll:
+      base: 60
+      mods:
+      - escape
+    success:
+      text: You scramble up the golden horn with teeth snapping at your heels.
+      effects:
+        next: duel
+    fail:
+      text: One of them catches your leg before you kick it loose.
+      effects:
+        health: -14
+        next: duel
+        cause: the Gamemakers' mutts
+  - label: Lie still and let them pass
+    hint: Hold to stay down. Let go to breathe.
+    tag: hide
+    minigame: hide
+    roll:
+      base: 55
+      mods:
+      - stealth
+    success:
+      text: They run past after someone louder. At dawn you walk to the horn.
+      effects:
+        next: duel
+    fail:
+      text: A wet nose finds you in the dark.
+      effects:
+        health: -16
+        next: duel
+        cause: the Gamemakers' mutts
+  - label: Stand and fight them
+    tag: bold
+    roll:
+      base: 40
+      mods:
+      - combat
+    success:
+      text: You hold a gap in the rocks while the mutts take someone who ran. The crowd screams your name.
+      effects:
+        kill: 1
+        next: duel
+        sponsor: true
+    fail:
+      text: There are too many of them.
+      effects:
+        health: -18
+        next: duel
+        cause: the Gamemakers' mutts
+- id: fog_finale
+  kind: finale
+  emoji: 🌫️
+  text: A yellow fog rolls down from the hills. It blisters whatever it touches, and it's coming for everyone. All
+    {remaining} survivors run for the horn.
+  options:
+  - label: Run for the horn
+    tag: safe
+    roll:
+      base: 60
+      mods:
+      - escape
+    success:
+      text: You outrun the edge of it. The fog stops at the Cornucopia, as if it was told to.
+      effects:
+        next: duel
+    fail:
+      text: It catches you for a few steps. Your skin bubbles where it touched.
+      effects:
+        health: -14
+        next: duel
+        cause: the yellow fog
+  - label: Climb above it
+    need:
+      item: rope
+    tag: safe
+    roll:
+      base: 75
+      mods:
+      - escape
+    success:
+      text: You tie off high in a tree and wait while the yellow rolls under you. Then you climb down near the horn.
+      effects:
+        next: duel
+    fail:
+      text: The rope slips. You fall into the fog and run.
+      effects:
+        health: -14
+        next: duel
+        cause: the yellow fog
+  - label: Dive into the stream and let it wash over
+    tag: bold
+    roll:
+      base: 45
+      mods:
+      - swim
+    success:
+      text: You surface into clean air. Downstream, a tribute who didn't think of it is still coughing.
+      effects:
+        kill: 1
+        next: duel
+        sponsor: true
+    fail:
+      text: You come up too soon, into the yellow.
+      effects:
+        health: -16
+        next: duel
+        cause: the yellow fog
 - id: stream_canteen
   kind: event
   place:
@@ -2351,7 +2508,7 @@
     nemesis: true
   days:
   - 2
-  - 4
+  - 7
   emoji: 🩸
   text: '{Nemesis} walks past close enough to touch, wiping someone else''s blood off a blade. They haven''t seen
     you.'

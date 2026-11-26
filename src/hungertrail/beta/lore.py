@@ -21,23 +21,28 @@ PERKS = {
     12: ("Hardened", "Hunger hurts half as much."),
 }
 
-# Bot win rates by district came out within a few points of each other (perks balance), so the
-# beta has no score multiplier: the district is a play style, not a difficulty setting.
-def multiplier(district: int) -> float:
-    return 1.0
+CAREERS = (1, 2, 4)
+
+
+# Oregon Trail's banker, carpenter and farmer: the poorer start scores more. Careers 1x, the
+# middle districts 2x, the two poorest 3x (and they start with less food, see engine.Game).
+def multiplier(district: int) -> int:
+    if district in CAREERS:
+        return 1
+    return 3 if district in (11, 12) else 2
 
 
 # name, emoji, what it does for you (shown at the bloodbath and in your kit)
 ITEMS = {
-    "knife": ("knife", "🔪", "+8 in fights. Cuts you free."),
-    "spear": ("spear", "🗡️", "+12 in fights. Hunt with one big throw. A taller bar when you fish."),
-    "axe": ("axe", "🪓", "+12 in fights. Chops through anything."),
-    "bow": ("bow", "🏹", "+15 in fights. Hunt with three arrows."),
-    "trident": ("trident", "🔱", "+20 in fights. Hunt with one big throw. A taller bar when you fish."),
-    "rope": ("rope", "🪢", "+10 when climbing or running. Snares on the ridge. A wider block in the final fight."),
-    "sleeping_bag": ("sleeping bag", "🛏️", "Hiding heals 15 more. Keeps out the cold."),
-    "medkit": ("medkit", "🩹", "Tap it to use it: heals 40, once."),
-    "iodine": ("iodine", "🧪", "+20 when foraging. Makes any water safe."),
+    "knife": ("knife", "🔪", "Cut yourself free of nets and snares. A small edge in a fight."),
+    "spear": ("spear", "🗡️", "Hunt with one big throw. A taller bar when you fish. A good edge in a fight."),
+    "axe": ("axe", "🪓", "Cut yourself free of nets and snares. A good edge in a fight."),
+    "bow": ("bow", "🏹", "Hunt with three arrows. A strong edge in a fight."),
+    "trident": ("trident", "🔱", "Hunt with one big throw. A taller bar when you fish. The best edge in a fight."),
+    "rope": ("rope", "🪢", "Climb, run, haul yourself out. Set snares on the ridge. A wider block in the final fight."),
+    "sleeping_bag": ("sleeping bag", "🛏️", "Sleep warm through cold nights. Hiding heals 15 more."),
+    "medkit": ("medkit", "🩹", "Tap it to heal 40, once."),
+    "iodine": ("iodine", "🧪", "Drink any water safely. Better odds when you forage."),
 }
 WEAPONS = {"knife": 8, "spear": 12, "axe": 12, "bow": 15, "trident": 20}
 HUNTERS = ("bow", "spear", "trident")

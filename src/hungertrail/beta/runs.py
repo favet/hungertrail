@@ -18,7 +18,7 @@ from . import lore
 from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
-VERSION = "b4"  # b4: the wheel, the Crystal Sphere sift, a night marker in the log
+VERSION = "b5"  # b5: stars and sponsors, hunger that escalates, the seeded day plan and finales
 
 
 def _mac(settings: Settings, body: bytes) -> str:
@@ -114,7 +114,8 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
         line, end = f"👑 VICTOR · {kills} · Day {game.day}", "Won the Hunger Games."
     else:
         line, end = f"Placed {ordinal(game.placement)} of 24 · {kills} · Day {game.day}", f"Killed by {game.cause}"
-    share = "\n".join([f"{title} · District {game.district}", line, game.emoji_row(), end, "beta.hungertrail.com"])
+    mult = lore.multiplier(game.district)
+    share = "\n".join([f"{title} · District {game.district} (×{mult})", line, game.emoji_row(), end, "beta.hungertrail.com"])
     return {
         "won": game.won,
         "placement": game.placement,
@@ -124,6 +125,7 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
         "cause": game.cause,
         "recap": game.recap,
         "score": game.score(),
+        "multiplier": mult,
         "emoji": game.emoji_row(),
         "district": game.district,
         "share": share,
@@ -144,6 +146,7 @@ def view(settings: Settings, token: str, game: Game, p: dict) -> dict:
         "log": game.log,
         "card": game.card,
         "options": game.options(),
+        "locked": game.locked(),
         "sift": game.sift_view(),
         "nemesis": game.nemesis_name[0].upper() + game.nemesis_name[1:],
         "over": game.over,

@@ -76,9 +76,9 @@ def test_options_show_stakes_the_engine_applies():
         if o["chance"] is not None:
             assert o["win"] and o["lose"]
     # Card damage on screen is the scaled damage the engine deals.
-    assert g._chips({"health": -20}) == [f"❤️−{round(20 * engine.DAMAGE)}"]
+    assert g._chips({"health": -20}) == [f"−{round(20 * engine.DAMAGE)} health"]
     g.health = 30
-    assert "☠️" in g._chips({"health": -20})
+    assert engine.DEADLY in g._chips({"health": -20})
 
 
 def test_draft_gives_kit_and_ends_bloodbath():
@@ -133,7 +133,7 @@ def test_the_medkit_makes_room_in_a_full_pack():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
     g.kit = ["knife", "medkit", "rope"]
-    g.health = 50
+    g.health, g.supplies = 50, 3
     g.resume = ("night",)
     g._gain("bow")
     g._advance(("night",))
@@ -161,6 +161,72 @@ def test_no_close_call_when_half_the_damage_still_kills():
     g.health = 10
     opts = [o for o in g.options() if o.get("ring") == "horn"]
     assert opts and not any(o["wheel"]["near"] for o in opts)
+
+
+def test_hunger_escalates_and_shows_before_night():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))  # run: day 2
+    g.district = 7  # District 12 would take half
+    g.arena.twist = "fat_fish"  # not the cold
+    g.supplies = 0
+    costs = []
+    for _ in range(3):
+        assert g.status()["hunger"] == g.hunger_cost()
+        costs.append(g.hunger_cost())
+        g.health = 100
+        g._night()
+    assert costs == [10, 20, 30]
+    g.supplies = 1
+    g._night()
+    assert g.hungry == 0 and g.status()["hunger"] == 10
+
+
+def test_the_death_recap_tells_the_chain():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.district = 7
+    g.arena.twist = "fat_fish"
+    g._hurt(45, "a Career's knife")
+    g.supplies = 0
+    g.health = 25
+    g._night()
+    g._night()
+    assert g.over and g.cause == "starvation"
+    assert g.recap == "Day 2: a Career's knife took 45. Two hungry nights finished it."
+
+
+def test_stars_buy_a_parachute_that_drops_tonight():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))  # run for the trees: day 2, the place menu
+    g.arena.twist = "fat_fish"  # no twist on prices or hunger
+    g.stars, g.supplies = 4, 0
+    menu = {m["key"]: m for m in g.status()["menu"]}
+    assert menu["food"]["can"] and menu["food"]["price"] == 2 and not menu["bow"]["can"]
+    g.choose(menu["food"]["index"])
+    assert g.stars == 2 and g.order == "food" and g.status()["order"] == "Food for 2 days"
+    assert not any(m["can"] for m in g.status()["menu"])  # one parachute a night
+    g._night()
+    assert g.order is None and g.supplies == 1 and g.hungry == 0  # it dropped before supper
+    assert {m["key"]: m["price"] for m in g.status()["menu"]}["food"] == 3  # each order raises prices
+    g.over, g.placement = True, 5
+    two = g.score()
+    g.stars = 0
+    assert two == round(g.score() * 1.2)
+
+
+def test_walking_away_costs_a_star():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.stars = 2
+    for cid, c in cards().items():
+        walk = [i for i, o in enumerate(c.get("options", [])) if o.get("tag") == "hide" and "roll" not in o and not o.get("need")]
+        if c["kind"] == "event" and walk:
+            g.card, g.target = cid, None
+            assert "−1 star" in next(o for o in g.options() if o["index"] == walk[0])["lose"]
+            g.choose(walk[0])
+            assert g.stars == 1
+            return
+    raise AssertionError("no walk-away card")
 
 
 def test_final_fight_runs_on_health():
@@ -307,8 +373,35 @@ def test_places_are_seeded_and_the_edge_closes():
     a = g.arena
     assert all(len(a.offers[d]) == 3 for d in range(2, 8))
     assert a.offers == Game(5, 77, new_setup(3, "X", [])).arena.offers
-    assert all(not set(a.offers[d]) & set(EDGE) for d in range(6, 8))
+    # After the edge closes, only the finale's refuge is left of it, and the menu changes day to day.
+    assert all(set(a.offers[d]) & set(EDGE) <= {a.refuge} for d in range(6, 8))
+    assert sorted(a.offers[6]) != sorted(a.offers[7]) or a.feast_day in (6, 7)
     assert "feast" in a.offers[a.feast_day]
+
+
+def test_the_day_plan_varies_by_seed():
+    arenas = [Game(seed, 1, SETUP).arena for seed in range(60)]
+    assert {a.sight_day for a in arenas} == {2, 3, 4, 5}
+    assert {a.finale for a in arenas} == set(engine.FINALES)
+    assert {a.twist for a in arenas} == set(engine.TWISTS)
+    assert len({tuple(a.offers[6]) for a in arenas}) > 1
+    for a in arenas:
+        assert a.sight_day < a.clash_day <= 7
+        assert engine.cards()[a.finale]["kind"] == "finale"
+
+
+def test_the_nemesis_keeps_to_the_rumored_places():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    a = g.arena
+    g.day = a.sight_day
+    away = next(p for p in ("stream", "ridge", "open", "horn") if p not in a.sight_places + a.clash_places)
+    assert g._place_card(a.sight_places[0]) == "nemesis_sighting"
+    assert g._place_card(away) != "nemesis_sighting"
+    g.day = a.sight_day - 1
+    assert g._place_card(a.sight_places[0]) != "nemesis_sighting"
+    rumor = [line for line in g._caesar(False) if "seen near" in line]
+    assert rumor and all(engine.PLACE_NAMES[p] in rumor[0] for p in a.sight_places)
 
 
 def test_edge_brings_the_gamemakers():
@@ -380,17 +473,23 @@ def test_beta_full_run_and_board():
     v = client.post("/api/beta/run", json={"mode": "daily", "district": 7, "partner": "Jake", "allies": ["Gingi"]}).json()
     assert v["layout"] and v["card"] == "draft" and "seed" not in str(v)
     r = random.Random(1)
+    bought = False
     for _ in range(150):
         if v["over"]:
             break
         o = r.choice(v["options"])
+        buy = [m for m in v["status"]["menu"] if m["can"]]
+        if buy:  # spend stars through the API too: the token replays the order
+            o = {"index": buy[0]["index"]}
+            bought = True
         game = o.get("minigame")
         param = {"fish": lambda p: mg.bot_fish(p, 0.5, r), "hunt": lambda p: mg.bot_hunt(p, 0.5, r),
                  "hide": lambda p: mg.bot_hide(p, 0.5, r), "fight": lambda p: mg.bot_fight(p, 0.5, r)}[game["game"]](game) if game else None
         res = client.post("/api/beta/run/choose", json={"token": v["token"], "index": o["index"], "param": param})
         assert res.status_code == 200, res.text
         v = res.json()
-    assert v["over"] and "beta.hungertrail.com" in v["result"]["share"]
+    assert v["over"] and "beta.hungertrail.com" in v["result"]["share"] and v["result"]["multiplier"] == 2
+    assert bought
     sub = client.post("/api/beta/leaderboard", json={"token": v["token"], "nickname": "BetaTester"})
     assert sub.status_code == 200
     rows = client.get("/api/beta/leaderboard").json()["rows"]

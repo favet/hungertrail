@@ -52,7 +52,8 @@ def _beta_page(request: Request):
     info = _daily_info()
     config = {
         "daily": info,
-        "districts": [{"id": k, "name": v, "perk": beta_lore.PERKS[k][0], "desc": beta_lore.PERKS[k][1]} for k, v in beta_lore.DISTRICTS.items()],
+        "districts": [{"id": k, "name": v, "perk": beta_lore.PERKS[k][0], "desc": beta_lore.PERKS[k][1],
+                       "mult": beta_lore.multiplier(k)} for k, v in beta_lore.DISTRICTS.items()],
         "names": beta_lore.DEFAULT_NAMES,
     }
     return templates.TemplateResponse(request, "beta.html", {"config": config, "daily": info, "v": STATIC_VERSION})

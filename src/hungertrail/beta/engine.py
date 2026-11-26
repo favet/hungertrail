@@ -52,6 +52,21 @@ HIDE_HEAL = 25
 EDGE_WATCHED = 5  # from this day, any day at the edge brings the Gamemakers
 EDGE_CLOSES = 6  # from this day the edge places are gone
 USE = 99  # choice index for tapping the medkit in your kit
+BUY = 500  # choice index BUY + k: order SPONSOR_MENU[k] from the sponsors
+
+# The crowd: stars from 0 to 5. Long shots that land and kills earn them, walking away costs one,
+# and the sponsors take them as payment. Stars you never spend add 10% each to your score.
+STARS_MAX = 5
+LONG_SHOT = 40  # a wheel at this or less that lands earns a star
+SPONSOR_MENU = [  # key, what it is, icon, price in stars (each order raises every price by one)
+    ("food", "Food for 2 days", "🍞", 2),
+    ("medicine", "Medicine: +30 health", "💊", 3),
+    ("knife", "A knife", "🔪", 3),
+    ("rope", "Rope", "🪢", 3),
+    ("bow", "A bow", "🏹", 5),
+]
+SPONSORS = ("the Capitol's fashion set", "an old Victor from your district", "a jeweller in District 1",
+            "a fan club in the Capitol", "someone who won money on you")
 DRAFT, PLACES, SWAP, DUEL, SIFT = "draft", "places", "swap", "duel", "sift"
 
 # The sift, after Slay the Spire's Crystal Sphere: a 9x9 grid of rubble at the horn hides treasures
@@ -90,6 +105,27 @@ PLACES_INFO = {
     "feast": ("🍽️", "Go to the feast", "A pack with your district's number on it. Everyone left alive will be there.", "bold"),
 }
 EDGE = ("rocks", "ridge")
+PLACE_NAMES = {"stream": "the stream", "rocks": "the rocks", "ridge": "the ridge", "horn": "the horn", "open": "the open ground"}
+
+# The end of the Games, one per day from the seed. refuge: the one edge place that stays open
+# after the edge closes, because of what's coming. hint: what Caesar says the night before.
+FINALES = {
+    "flood": {"refuge": "ridge", "why": "the water won't reach that high",
+              "hint": "Bring a swimsuit. That's all I'm allowed to say."},
+    "fire_finale": {"refuge": "rocks", "why": "rock doesn't burn",
+                    "hint": "Something warm is planned for the end. Very warm."},
+    "mutt_finale": {"refuge": "ridge", "why": "nothing with four legs climbs that",
+                    "hint": "Listen for howling, ladies and gentlemen."},
+    "fog_finale": {"refuge": "rocks", "why": "the fog rolls over the rocks and on",
+                   "hint": "Take a deep breath tonight. You'll want it later."},
+}
+# A twist of the day, the same for everyone, announced when the bloodbath ends.
+TWISTS = {
+    "generous": "The sponsors are generous today: every parachute costs one star less.",
+    "cold": "A cold front is coming through: every hungry night hurts 5 more.",
+    "fat_fish": "The stream is full of fish today: every catch is worth one more day of food.",
+    "loud_crowd": "The Capitol is restless today: every tribute starts with two more stars.",
+}
 EPITHETS = ("the Butcher", "the Wolf", "Smiler", "the Hound", "the Knife")
 
 
@@ -116,6 +152,18 @@ def health_word(h: int) -> str:
 
 def _sign(n: int) -> str:
     return f"+{n}" if n >= 0 else f"−{-n}"
+
+
+# Stakes are words, not emoji: what you gain or lose, said plainly.
+DEADLY = "could kill you"
+
+
+def hp(n: int) -> str:
+    return f"{_sign(n)} health"
+
+
+def food(n: int) -> str:
+    return f"{_sign(n)} food"
 
 
 class Arena:
@@ -159,11 +207,25 @@ class Arena:
             sched[r.randint(2, MAX_DAYS - 1)] += 1
         self.schedule = sched
 
-        # Where you can go each day: 3 of the 5 places until the edge closes.
+        # Today's script: when and where the nemesis turns up, how the Games end, and the twist.
+        plan = _rng(seed, "plan")
+        self.sight_day = plan.choice([2, 3, 4, 5])
+        self.sight_places = sorted(plan.sample(["stream", "ridge", "open", "horn"], 2), key=PLACE_KEYS.index)
+        self.clash_day = min(7, self.sight_day + plan.choice([2, 3]))
+        self.clash_places = sorted(plan.sample(["stream", "open", "horn"], 2), key=PLACE_KEYS.index)
+        self.finale = plan.choice(sorted(FINALES))
+        self.refuge = FINALES[self.finale]["refuge"]
+        self.twist = plan.choice(sorted(TWISTS))
+
+        # Where you can go each day: 3 of the 5 places until the edge closes. After that, 3 of the
+        # stream, the horn, the open and the finale's refuge, never the same three two days running.
         self.offers: dict[int, list[str]] = {}
+        late = ["stream", "horn", "open", self.refuge]
         for day in range(2, MAX_DAYS + 1):
             if day >= EDGE_CLOSES:
-                offer = ["stream", "horn", "open"]
+                offer = _rng(seed, "places", day).sample(late, 3)
+                if sorted(offer) == sorted(self.offers.get(day - 1, [])):
+                    offer = [p for p in late if p not in offer] + offer[:2]
             else:
                 offer = _rng(seed, "places", day).sample(PLACE_KEYS[:5], 3)
             if day == self.feast_day:
@@ -185,7 +247,7 @@ class Game:
 
         self.day = 1
         self.health = 100
-        self.supplies = 2 + (2 if self.district == 9 else 0)
+        self.supplies = 1 if self.district in (11, 12) else 2 + (2 if self.district == 9 else 0)
         self.kit: list[str] = []
         self.gm_due = False
         self.edge_streak = 0
@@ -220,6 +282,12 @@ class Game:
         self.resume: tuple = ()
         self.new_kills: list[str] = []
         self.last: tuple = ("", None, 100)
+        self.hungry = 0  # hungry nights in a row: each one hurts more
+        self.stars = (2 if self.district == 1 else 1) + (2 if self.arena.twist == "loud_crowd" else 0)
+        self.bought = 0
+        self.order: str | None = None  # what the sponsors drop tonight
+        self.cheer: str | None = None  # a star earned this choice, said after its result
+        self.hits: list[tuple[int, int, str]] = []  # (day, damage, cause), for the death recap
         self.kills_today = 0
         self.killed: set[str] = set()
 
@@ -271,10 +339,31 @@ class Game:
                                          o.get("tag", "safe"), win, lose, minigame=self._hide_params(card["id"], o["roll"]["base"])))
                     continue
                 odds = {**self._odds(o["roll"]), "near": self._card_near(o)}
+                if odds["chance"] <= LONG_SHOT and self.stars < STARS_MAX:
+                    win = win + ["+1 star"]
                 out.append(self._opt(i, o["label"], o.get("hint", ""), odds["chance"], o.get("tag", "safe"), win, lose, wheel=odds))
             else:
                 e = o.get("effects", {})
-                out.append(self._opt(i, o["label"], o.get("hint", ""), None, o.get("tag", "safe"), self._chips(e, card), []))
+                walk = o.get("tag") == "hide" and self.stars > 0
+                out.append(self._opt(i, o["label"], o.get("hint", ""), None, o.get("tag", "safe"), self._chips(e, card),
+                                     ["−1 star"] if walk else []))
+        return out
+
+    def locked(self) -> list[dict]:
+        """Options on this card that an item you don't have would unlock: shown greyed, so kit means something."""
+        if self.over or self.card in (DRAFT, PLACES, SWAP, DUEL, SIFT) or self.card not in cards():
+            return []
+        out = []
+        for o in cards()[self.card]["options"]:
+            need = o.get("need") or {}
+            items = [need["item"]] if "item" in need else list(need.get("any", []))
+            if not items or self._has(o.get("need")):
+                continue
+            rest = {k: v for k, v in need.items() if k not in ("item", "any")}
+            if not self._has(rest):
+                continue
+            names = [f"{'some' if i == 'iodine' else 'an' if i[0] in 'aeiou' else 'a'} {lore.item_name(i)}" for i in items]
+            out.append({"label": self._fmt(o["label"]), "needs": " or ".join(names)})
         return out
 
     def can_use_medkit(self) -> bool:
@@ -285,6 +374,8 @@ class Game:
             raise ValueError("run is over")
         if index == USE:
             return self._use_medkit()
+        if BUY <= index < BUY + len(SPONSOR_MENU):
+            return self._buy(index - BUY)
         valid = {o["index"]: o for o in self.options()}
         if index not in valid:
             raise ValueError("invalid option")
@@ -307,6 +398,9 @@ class Game:
             dest = self._resolve_sift(index)
         else:
             dest = self._resolve_card(index, param, game)
+        if self.cheer and not self.over:
+            self._crowd(1, self.cheer)
+        self.cheer = None
         self._delta(snap)
         if dest and dest[0] == "round":
             if dest[1]:
@@ -338,7 +432,7 @@ class Game:
 
     # ------------------------------------------------------------------ option helpers
     def _opt(self, index, label, hint, chance, tag, win, lose, **extra) -> dict:
-        deadly = "☠️" in lose
+        deadly = DEADLY in lose
         return {
             "index": index, "label": self._fmt(label), "hint": self._fmt(hint), "chance": chance,
             "tag": tag, "win": win, "lose": lose, "deadly": deadly, **extra,
@@ -348,27 +442,27 @@ class Game:
         out = []
         if "health" in e:
             n = e["health"] if e["health"] > 0 else -self._card_damage(e["health"])
-            if n > -self.health:  # a hit that would kill you shows as ☠️ alone, below
-                out.append(f"❤️{_sign(n)}")
+            if n > -self.health:  # a hit that would kill you says so instead, below
+                out.append(hp(n))
         if e.get("supplies"):
-            out.append(f"🎒{_sign(e['supplies'])}")
+            out.append(food(e["supplies"]))
         for item in self._list(e.get("add")):
-            out.append(f"{lore.item_emoji(item)} {lore.item_name(item)}")
+            out.append(f"a {lore.item_name(item)}" if item != "iodine" else "iodine")
         for item in self._list(e.get("remove")):
             if item in self.kit:
-                out.append(f"−{lore.item_emoji(item)}")
+                out.append(f"lose your {lore.item_name(item)}")
         if e.get("sponsor"):
-            out.append("🎁 sponsor")
+            out.append("a sponsor gift")
         if e.get("gift"):
-            out.append("🎁 a find")
+            out.append("a find")
         if e.get("kill"):
-            out.append("⚔️ kill")
+            out.append("a kill")
         if e.get("ally") in ("dies", "lost") and self.allies:
-            out.append(f"−{self.allies[0]}")
+            out.append(f"lose {self.allies[0]}")
         if e.get("ally") == "joins_partner":
-            out.append(f"+{self.partner}")
+            out.append(f"{self.partner} joins you")
         if e.get("die") or ("health" in e and e["health"] < 0 and self._card_damage(e["health"]) >= self.health):
-            out.append("☠️")
+            out.append(DEADLY)
         return out
 
     def _near_ok(self, dmg: int) -> bool:
@@ -398,7 +492,7 @@ class Game:
                     "near": self._near_ok(dmg)}
             chance = odds["chance"]
             desc = f"{lore.PACKS[item][2]} days of supplies." if item in lore.PACKS else lore.ITEMS[item][2]
-            lose = [f"❤️−{dmg}"] + (["☠️"] if dmg >= self.health else []) + ["you run"]
+            lose = [hp(-dmg)] + ([DEADLY] if dmg >= self.health else []) + ["you run"]
             out.append(self._opt(i, f"Grab the {lore.item_name(item)}", f"{where}. {desc}", chance,
                                  "bold" if ring != "edge" else "safe",
                                  [f"{lore.item_emoji(item)} {lore.item_name(item)}"], lose, wheel=odds,
@@ -459,6 +553,7 @@ class Game:
         self._say(f"The bloodbath ends. The cannons fire all at once. You count {n}.", "cannon")
         self._say(f"{lore.HOST}: \"Two of those were {self.nemesis}. The Capitol already has a name for that one: "
                   f"{self.nemesis_name}.\"", "caesar")
+        self._say(f"Today's twist: {TWISTS[self.arena.twist]}", "twist")
         if self.ally_names:
             names = " and ".join(self.ally_names)
             self.allies = list(self.ally_names)
@@ -479,14 +574,14 @@ class Game:
         new = self.pending_item
         out = [
             self._opt(i, f"Drop the {lore.item_name(k)}", lore.ITEMS[k][2], None, "safe",
-                      [f"{lore.item_emoji(new)} {lore.item_name(new)}"], [])
+                      [f"the {lore.item_name(new)}"], [])
             for i, k in enumerate(self.kit)
         ]
         out.append(self._opt(lore.KIT_SLOTS, f"Leave the {lore.item_name(new)}", lore.ITEMS[new][2], None, "safe", [], []))
         if self.can_use_medkit():
             heal = min(40, 100 - self.health)
             out.append(self._opt(USE, f"Use the medkit, then take the {lore.item_name(new)}", "Heal now and make room.",
-                                 None, "safe", [f"❤️+{heal}", f"{lore.item_emoji(new)} {lore.item_name(new)}"], []))
+                                 None, "safe", [hp(heal), f"the {lore.item_name(new)}"], []))
         return out
 
     def _resolve_swap(self, index: int) -> tuple:
@@ -562,6 +657,8 @@ class Game:
             text, effects = branch.get("text", ""), branch.get("effects", {})
         else:
             text, effects = opt.get("text", ""), opt.get("effects", {})
+            if opt.get("tag") == "hide":
+                self._crowd(-1, "The crowd groans. They wanted to see something.")
         if near and effects.get("health", 0) < 0 and not effects.get("die"):
             text = "Close call. " + text
         if text:
@@ -584,7 +681,7 @@ class Game:
         if self.remaining <= 2:
             return self._start_duel()
         if self.day >= MAX_DAYS:
-            return self._draw("flood")
+            return self._draw(self.arena.finale)
         if self.gm_due:
             self.gm_due = False
             gm = next((g for g in self.arena.gamemakers if g not in self.used), self.arena.gamemakers[0])
@@ -618,12 +715,19 @@ class Game:
     def _night(self) -> None:
         self._say("Night falls.", "night")  # the screen starts a new scene here
         snap = self._snap()
+        if self.order:
+            self._drop()
         fed = self.supplies > 0
         if fed:
             self.supplies -= 1
+            self.hungry = 0
         else:
-            self._say("You go to sleep with nothing to eat or drink.", "status")
-            self._hurt(10 if self.district == 12 else 20, "starvation")
+            cost = self.hunger_cost()
+            self.hungry += 1
+            self._say(["You go to sleep with nothing to eat or drink.",
+                       "A second night with nothing to eat. Your hands shake.",
+                       "Another night without food. You can feel your body eating itself."][min(2, self.hungry - 1)], "status")
+            self._hurt(cost, "starvation")
             if self.over:
                 return
         if fed:
@@ -631,7 +735,7 @@ class Game:
         self._delta(snap, night=True)
 
         # The Gamemakers watch the edge of the arena.
-        at_edge = self.place in EDGE
+        at_edge = self.place in EDGE and not self._refuge_open(self.place)
         self.edge_streak = self.edge_streak + 1 if at_edge else 0
         if at_edge and (self.edge_streak >= 2 or self.day >= EDGE_WATCHED):
             self.gm_due = True
@@ -650,6 +754,10 @@ class Game:
             self.nemesis_kills += 1 + (len(scheduled) >= 4)
             sky += f" {self.nemesis_name[0].upper()}{self.nemesis_name[1:]} is up to {self.nemesis_kills} kills."
         self._say(sky, "sky")
+        nxt = self.arena.offers.get(self.day + 1)
+        if nxt and self.day + 1 < MAX_DAYS:
+            names = [PLACE_NAMES.get(p, "the feast") for p in nxt]
+            self._say(f"Tomorrow you can reach {', '.join(names[:-1])} or {names[-1]}.", "plan")
         self.day += 1
         self._morning()
 
@@ -684,7 +792,19 @@ class Game:
             out.append(f"{lore.HOST}: \"From tomorrow the Gamemakers are watching the edge of the arena. Anyone hiding there "
                        "will be found.\"")
         elif self.day + 1 == EDGE_CLOSES:
-            out.append(f"{lore.HOST}: \"Tomorrow the arena closes in. The rocks and the ridge are gone.\"")
+            gone = "ridge" if self.arena.refuge == "rocks" else "rocks"
+            out.append(f"{lore.HOST}: \"Tomorrow the arena closes in. The {gone} are gone. The {self.arena.refuge} "
+                       f"stays open, and I'm told there's a reason.\"".replace("The ridge are", "The ridge is"))
+        if self.day + 1 == MAX_DAYS - 1:
+            out.append(f"{lore.HOST}: \"{FINALES[self.arena.finale]['hint']}\"")
+        if self.nemesis in self.pool:
+            name = f"{self.nemesis_name[0].upper()}{self.nemesis_name[1:]}"
+            where = " and ".join(PLACE_NAMES[p] for p in self.arena.sight_places)
+            if self.day + 1 == self.arena.sight_day and "nemesis_sighting" not in self.used:
+                out.append(f"{lore.HOST}: \"Word is {self.nemesis_name} has been seen near {where}. Stay away, or go and look.\"")
+            where = " and ".join(PLACE_NAMES[p] for p in self.arena.clash_places)
+            if self.day + 1 == self.arena.clash_day and "nemesis_clash" not in self.used:
+                out.append(f"{lore.HOST}: \"{name} is hunting now. Last seen at {where}.\"")
         return out
 
     def _scheduled_deaths(self, day: int) -> list[str]:
@@ -725,32 +845,36 @@ class Game:
             emoji, label, hint, tag = PLACES_INFO[key]
             extra = {}
             if key == "stream":
-                win, lose = ["🎣 🎒+1 or +2"], ["⚔️ others drink here too"]
+                win, lose = (["fish: +2 or +3 food"] if self.arena.twist == "fat_fish" else ["fish: +1 or +2 food"]), ["others drink here too"]
                 extra["minigame"] = self._fish_params()
                 hint = "Fish for your supper. Water and food. Everyone else needs it too."
             elif key == "rocks":
-                win, lose = [f"❤️+{self._hide_heal()}"], ["🎒−1"]
+                win, lose = [hp(self._hide_heal())], [food(-1)]
             elif key == "ridge":
                 if any(w in self.kit for w in lore.HUNTERS):
                     hunt = self._hunt_params()
                     shots = len(hunt["shots"])
-                    win, lose = ["🏹 🐇🎒+1 🦌🎒+2" if shots > 1 else "🗡️ 🐇🎒+2 🦌🎒+3"], ["🐾 noise if you miss"]
+                    win, lose = ["hunt: rabbit +1 food, deer +2" if shots > 1 else "hunt: rabbit +2 food, deer +3"], ["noise if you miss"]
                     extra["minigame"] = hunt
                     hint = (f"Hunt up high: {'three arrows' if shots > 1 else 'one throw'}. The edge of the arena.")
                 else:
                     snares = self.district == 3 or "rope" in self.kit
-                    win, lose = [f"🎒+{2 if self.district == 3 else 1 if snares else 2} likely"], ["🐾 some danger"]
+                    win, lose = [f"{food(2 if self.district == 3 else 1 if snares else 2)}, likely"], ["some danger"]
                     hint = ("Set snares up high." if snares else "Forage up high.") + " The edge of the arena."
             elif key == "horn":
-                win, lose = ["⛏️ dig for loot"], ["⚔️ fights likely"]
+                win, lose = ["dig for loot"], ["fights likely"]
             elif key == "open":
-                win, lose = ["🎁 sponsor gift likely"], ["👁️ you'll be seen"]
+                win, lose = ["+2 stars, likely"], ["you'll be seen"]
             else:  # feast
-                win, lose = ["❤️ 🎒 what you need"], ["⚔️ everyone"]
-            if key in EDGE:
+                win, lose = ["what you need most"], ["everyone will be there"]
+            if key in EDGE and self._refuge_open(key):
+                lose = lose + [f"the last quiet place: {FINALES[self.arena.finale]['why']}"]
+            elif key in EDGE:
                 watched = self.edge_streak >= 1 or self.day >= EDGE_WATCHED
-                lose = lose + (["⚠️ Gamemakers"] if watched else ["🌲 the edge"])
-            out.append(self._opt(PLACE_KEYS.index(key), f"{emoji} {label}", hint, None, tag, win, lose, place=key, **extra))
+                lose = lose + (["the Gamemakers are watching"] if watched else ["the edge of the arena"])
+            if self._nemesis_here(key):
+                lose = [f"{self.nemesis_name[0].upper()}{self.nemesis_name[1:]} was seen here"] + lose
+            out.append(self._opt(PLACE_KEYS.index(key), label, hint, None, tag, win, lose, place=key, icon=emoji, **extra))
         return out
 
     def _resolve_place(self, index: int, param=None, game: dict | None = None) -> tuple:
@@ -769,7 +893,7 @@ class Game:
                 self._hurt(-hurt, "a leech from the stream")
             elif caught:
                 self._played("fish", True, "CAUGHT", f"{emoji} a {kind}")
-                self.supplies += food
+                self.supplies += food + (1 if self.arena.twist == "fat_fish" else 0)
                 self._say(self._pick("You drink until your stomach hurts, then eat the fish raw on the bank.",
                                      f"A {kind}, fat and slippery. Cold water and a meal."), "result")
             else:
@@ -812,9 +936,9 @@ class Game:
             self._start_sift()
             return ("sift",)
         elif key == "open":
-            _, ok, _ = self._reveal(self._open_odds(), "Hope for a sponsor", near_counts=False)
+            _, ok, _ = self._reveal(self._open_odds(), "Play to the cameras", near_counts=False)
             if ok:
-                self._gift()
+                self._crowd(2, "The cameras find you, and the Capitol likes what it sees.")
             else:
                 self._say("Nothing falls from the sky. And now everyone knows where you are.", "result")
         if self.over:
@@ -825,10 +949,22 @@ class Game:
         self._say("The rest of the day passes quietly.", "result")
         return ("night",)
 
+    def _refuge_open(self, key: str) -> bool:
+        return self.day >= EDGE_CLOSES and key == self.arena.refuge
+
+    def _nemesis_plan(self) -> list[tuple[str, int, list[str]]]:
+        a = self.arena
+        return [("nemesis_sighting", a.sight_day, a.sight_places), ("nemesis_clash", a.clash_day, a.clash_places)]
+
+    def _nemesis_here(self, key: str) -> bool:
+        """Has the nemesis been seen at this place, and not met there yet?"""
+        if self.nemesis not in self.pool:
+            return False
+        return any(cid not in self.used and self.day >= day and key in places for cid, day, places in self._nemesis_plan())
+
     def _place_card(self, key: str) -> str | None:
-        for cid in ("nemesis_sighting", "nemesis_clash"):
-            c = cards()[cid]
-            if cid not in self.used and key in c["place"] and self._eligible(c):
+        for cid, day, places in self._nemesis_plan():
+            if cid not in self.used and self.day >= day and key in places and self._eligible(cards()[cid]):
                 return cid
         for cid in self.arena.deck:
             c = cards()[cid]
@@ -1109,8 +1245,8 @@ class Game:
             if "rope" in self.kit:
                 bits.append("Rope: a wider block.")
             deal, take = self._fight_deal(stance), self._fight_take(stance)
-            win = ["👑"] if deal >= self.opp_health else [f"🩸 them −{deal}"]
-            lose = [f"❤️−{take}"] + (["☠️"] if take >= self.health else [])
+            win = ["you win"] if deal >= self.opp_health else [f"them −{deal}"]
+            lose = [hp(-take)] + ([DEADLY] if take >= self.health else [])
             out.append(self._opt(i, label, " ".join(bits), None, tag, win, lose, minigame=self._fight_params(stance)))
         return out
 
@@ -1214,6 +1350,7 @@ class Game:
             self.pool.remove(v)
             self.fallen_today.append(v)
             if mine:
+                self.cheer = "A kill. The crowd sits up."
                 self.killed.add(v)
                 self.new_kills.append(self._name(v))
                 self.kills += 1
@@ -1244,7 +1381,60 @@ class Game:
         self.days[self.day].append("🎁")
         self._say(f"A silver parachute drifts down: {what}.", "gift")
 
+    # ------------------------------------------------------------------ the crowd and the sponsors
+    def _crowd(self, n: int, why: str) -> None:
+        was = self.stars
+        self.stars = max(0, min(STARS_MAX, self.stars + n))
+        if self.stars != was:
+            self._say(why, "crowd")
+
+    def sponsor_menu(self) -> list[dict]:
+        open_ = not self.over and self.order is None and self.card not in (DUEL, SWAP, DRAFT)
+        out = []
+        for k, (key, label, icon, price) in enumerate(SPONSOR_MENU):
+            price += self.bought - (1 if self.arena.twist == "generous" else 0)
+            gear = key not in ("food", "medicine")
+            note = ("you have one" if gear and key in self.kit else
+                    "your pack is full" if gear and len(self.kit) >= lore.KIT_SLOTS else "")
+            out.append({"index": BUY + k, "key": key, "label": label, "icon": icon, "price": price, "note": note,
+                        "can": open_ and not note and self.stars >= price})
+        return out
+
+    def _buy(self, k: int) -> None:
+        item = self.sponsor_menu()[k]
+        if not item["can"]:
+            raise ValueError("the sponsors won't send that now")
+        self.steps += 1
+        snap = self._snap()
+        self._say(f"Ask the sponsors for {item['label'][0].lower()}{item['label'][1:]}", "choice")
+        self.stars -= item["price"]
+        self.bought += 1
+        self.order = item["key"]
+        self._say("You look up at the cameras and ask. It will drop tonight, if anyone's still watching.", "result")
+        self._delta(snap)
+
+    def _drop(self) -> None:
+        """Tonight's parachute, the one you paid for."""
+        key, self.order = self.order, None
+        label = next(lb for k, lb, _, _ in SPONSOR_MENU if k == key)
+        if key == "food":
+            self.supplies += 2
+        elif key == "medicine":
+            self.health = min(100, self.health + 30)
+        else:
+            self._gain(key)
+        who = SPONSORS[(self.day + self.bought) % len(SPONSORS)]
+        self.days[self.day].append("🎁")
+        self._say(f"A silver parachute drifts down: {label[0].lower()}{label[1:].split(':')[0]}. A gift from {who}.", "gift")
+
+    def hunger_cost(self) -> int:
+        """What tonight costs if you have nothing to eat: 10, then 20, then 30 in a row. District 12 takes half."""
+        n = 10 * min(3, self.hungry + 1) + (5 if self.arena.twist == "cold" else 0)
+        return n // 2 if self.district == 12 else n
+
     def _hurt(self, n: int, cause: str) -> None:
+        if n > 0:
+            self.hits.append((self.day, n, cause))
         self.health -= n
         if self.health <= 0:
             self._die(cause)
@@ -1252,13 +1442,7 @@ class Game:
     def _die(self, cause: str) -> None:
         if self.over:
             return
-        label, chance, health = self.last
-        if cause == "starvation":
-            self.recap = "You ran out of supplies."
-        elif label and chance is not None:
-            self.recap = f"You took the {chance}% “{label}” with {health} health."
-        elif label:
-            self.recap = f"You chose “{label}” with {health} health."
+        self.recap = self._recap(cause)
         self.health = 0
         self.over = True
         self.cause = cause
@@ -1266,6 +1450,26 @@ class Game:
         self.days[self.day].append("☠️")
         self._say(f"You have died. Cause of death: {cause}.", "death")
         self.card = ""
+
+    def _recap(self, cause: str) -> str:
+        """The chain that killed you, not just the last blow: the big hits, the hungry nights, the end."""
+        label, chance, health = self.last
+        hungry = sum(1 for _, _, c in self.hits if c == "starvation")
+        big = [h for h in self.hits[:-1] if h[2] not in ("starvation", cause) and h[1] >= 20]
+        big = sorted(sorted(big, key=lambda h: -h[1])[:2])
+        parts = [f"Day {d}: {c} took {n}." for d, n, c in big]
+        if cause == "starvation":
+            nights = {1: "One hungry night", 2: "Two hungry nights", 3: "Three hungry nights"}.get(hungry, f"{hungry} hungry nights")
+            parts.append(f"{nights} finished it." if parts else "You ran out of food.")
+        else:
+            if hungry:
+                parts.append(f"{'One hungry night' if hungry == 1 else f'{hungry} hungry nights'} wore you down.")
+            if label and chance is not None:
+                parts.append(f"Then you took the {chance}% “{label}” with {health} health.")
+            elif label:
+                parts.append(f"Then you chose “{label}” with {health} health.")
+        text = " ".join(parts)
+        return text[0].upper() + text[1:] if text else ""
 
     def _win(self) -> None:
         self.over = True
@@ -1331,6 +1535,8 @@ class Game:
         self.log.append({"day": self.day, "kind": "roll", "text": f"{chance}% · rolled {roll}",
                          "chance": chance, "roll": roll, "ok": ok, "near": near, "label": label,
                          "base": odds["base"], "edges": odds["edges"], "got": got, "near_zone": near_counts})
+        if ok and chance <= LONG_SHOT:
+            self.cheer = "A long shot, and it landed. The crowd is on its feet."
         return roll, ok, near
 
     @staticmethod
@@ -1355,17 +1561,19 @@ class Game:
     # ------------------------------------------------------------------ text
     def _snap(self) -> tuple:
         self.new_kills = []
-        return (self.health, self.supplies, list(self.kit), list(self.allies))
+        return (self.health, self.supplies, list(self.kit), list(self.allies), self.stars)
 
     def _delta(self, snap: tuple, night: bool = False) -> None:
         if self.over and not self.won:
             return
-        health, supplies, kit, allies = snap
+        health, supplies, kit, allies, stars = snap
         parts = []
         if self.health != health:
             parts.append(f"❤️ {_sign(self.health - health)}")
         if self.supplies != supplies:
             parts.append(f"🎒 {_sign(self.supplies - supplies)}")
+        if self.stars != stars:
+            parts.append(f"⭐ {_sign(self.stars - stars)}")
         for k in self.kit:
             if k not in kit:
                 parts.append(f"+{lore.item_emoji(k)} {lore.item_name(k)}")
@@ -1428,6 +1636,11 @@ class Game:
             "remaining": self.remaining,
             "allies": list(self.allies),
             "can_use": "medkit" if self.can_use_medkit() else None,
+            "hunger": 0 if self.supplies else self.hunger_cost(),  # what tonight costs you, if you don't eat
+            "stars": self.stars,
+            "stars_max": STARS_MAX,
+            "order": next((lb for k, lb, _, _ in SPONSOR_MENU if k == self.order), None),
+            "menu": self.sponsor_menu(),
             "fight": {"them": self.opp_health, "max": self.opp_max, "name": self.opponent,
                       "boss": self.opponent_id == self.nemesis} if self.card == DUEL else None,
         }
@@ -1452,7 +1665,8 @@ class Game:
         pts = (START_TRIBUTES + 1 - place) * 40 + self.kills * 60 + self.day * 25
         if self.won:
             pts += 500
-        return round(pts * lore.multiplier(self.district))
+        # Your district's multiplier, then 10% for every star you never spent.
+        return round(pts * lore.multiplier(self.district) * (1 + 0.1 * self.stars))
 
 
 def new_setup(district: int, partner: str, allies: list[str]) -> dict:
