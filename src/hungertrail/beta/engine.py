@@ -55,7 +55,7 @@ HIDE_HEAL = 25
 EDGE_WATCHED = 5  # from this day, any day at the edge brings the Gamemakers
 EDGE_CLOSES = 6  # from this day the edge places are gone
 USE = 99  # choice index for tapping the medkit in your kit
-QUIT = 98  # choice index for giving up the run from the settings menu: it ends as a loss
+QUIT = 98  # giving up from the settings menu ends the run as a loss. Not offered now (restarts are free); kept so old runs replay
 GAVE_UP = "giving up"
 BUY = 500  # choice index BUY + k: order SPONSOR_MENU[k] from the sponsors
 

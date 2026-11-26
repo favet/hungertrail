@@ -676,6 +676,7 @@ function showResults(v) {
     !r.won && r.recap ? el("p", { class: "recap dim", text: r.recap }) : null,
   ].filter(Boolean)
   );
+  $("#btn-retry").hidden = v.mode !== "daily";
   const canSubmit = v.mode === "daily" && !store.get("submitted." + v.date);
   $("#submit-box").hidden = !canSubmit;
   $("#submit-msg").textContent = "";
@@ -742,9 +743,8 @@ function tickCountdown() {
 }
 
 // ------------------------------------------------------------------ settings
-// From the game: sound, back to the title (the run is saved), and a way out of the run. A practice
-// run restarts; a daily run can only be given up, and that counts as a loss, so it can't dodge a
-// bad day. From the title: sound, and clearing what this device has saved.
+// From the game: sound, back to the title (the run is saved), and a free restart. From the title:
+// sound, and clearing what this device has saved.
 function confirmButton(label, sure, act) {
   const b = el("button", { class: "danger", text: label });
   let armed = false;
@@ -763,14 +763,11 @@ function openSettings(inGame) {
   const rows = [el("p", {}, el("b", { text: "Settings" })), sound];
   if (inGame && view && !view.over) {
     rows.push(el("button", { text: "Main menu (your run is saved)", onclick: () => { close(); refreshTitle(); show("title"); } }));
-    if (view.mode === "practice") {
-      rows.push(confirmButton("Restart this practice run", "Tap again to restart", () => {
-        close(); store.del("practice"); openReaping("practice");
-      }));
-    } else {
-      rows.push(el("p", { class: "dim small", text: "Giving up ends today's run as a loss, right where you are. You can't play today's arena again." }));
-      rows.push(confirmButton("Give up today's run", "Tap again to give up", () => { close(); send(98, null); }));
-    }
+    // Restarting is free, in practice and in today's arena: a fresh run from the reaping.
+    const daily = view.mode === "daily";
+    rows.push(confirmButton(daily ? "Restart today's run" : "Restart this practice run", "Tap again to restart", () => {
+      close(); store.del(daily ? dailyKey() : "practice"); openReaping(view.mode);
+    }));
   } else if (!inGame) {
     rows.push(el("p", { class: "dim small", text: "Clears this device's saved runs, tips and nickname. Use it if a run is stuck." }));
     rows.push(confirmButton("Reset this device", "Tap again to reset", () => {
@@ -804,6 +801,7 @@ $("#btn-practice").onclick = () => {
   else openReaping("practice");
 };
 $("#btn-again").onclick = () => { store.del("practice"); openReaping("practice"); };
+$("#btn-retry").onclick = () => { store.del(dailyKey()); openReaping("daily"); };
 $("#btn-board").onclick = openBoard;
 $("#btn-results-board").onclick = openBoard;
 $("#btn-help").onclick = () => show("help");
