@@ -14,7 +14,8 @@ Same contract as the live engine: pure and deterministic, a run is (seed, salt, 
 - A failed roll within NEAR points is a near miss: the damage is halved.
 - One named Career, the nemesis, is the same for everyone today: their kills show in the sky,
   they cross your path, and if they're alive at the end they're your final opponent.
-- The final duel is best of three rounds; your edges (kit, health, kills) set each round's odds.
+- The final fight runs on health, yours and theirs: press or hold each exchange. Your kit and kills set
+  the odds and the damage; wounds you gave the nemesis earlier carry in.
 - Rolls the player chose are logged as "roll" entries so the screen can show what happened.
 """
 
@@ -32,13 +33,23 @@ from . import lore
 
 START_TRIBUTES = 24
 MAX_DAYS = 8
-DAMAGE = 2.6  # global lethality dial for card damage, tuned with the bots
+DAMAGE = 3.4  # global lethality dial for card damage, tuned with the bots
 NEAR = 10  # a failed roll this close to the target is a near miss
-DUEL_BASE = 34  # odds of winning a duel round before your edges
-DUEL_HIT = {"press": 25, "hold": 12}  # what a lost round costs
+# The final fight runs on health: yours and theirs. how: (odds before edges, damage you deal, damage you take)
+FIGHT = {"press": (25, 45, 34), "hold": (40, 20, 18)}
+FIGHT_WEAPON_DMG = 10  # a weapon's fight bonus, in tenths, added to press damage (+12 -> +12)
+FIGHT_PER_KILL, FIGHT_KILLS_CAP = 4, 12
+FIGHT_NEMESIS_HIT = 8  # the nemesis hits harder
+OPPONENT_HEALTH = {"nemesis": 100, "ally": 70, "other": 70}
 OPEN_GIFT = 55  # odds a sponsor pays when you go out in the open
+OPEN_FADE = 15  # ...less each time you've been out there before: the cameras have their footage
+HIT_CAP = 85  # no single card hit is bigger than this, so one miss never kills from full health
+WALK_COST = 1  # walking away from an event costs a day's supplies: a day spent avoiding trouble finds no food
+HUNT_SHOT = 50  # odds per arrow when you hunt on the ridge (three shots, rolled by the server)
 HORN_LOOT = 60  # odds of picking something up when you head for the horn
 HIDE_HEAL = 25
+STREAM_SUPPLIES = 1
+START_SUPPLIES = 3
 EDGE_WATCHED = 5  # from this day, any day at the edge brings the Gamemakers
 EDGE_CLOSES = 6  # from this day the edge places are gone
 USE = 99  # choice index for tapping the medkit in your kit
@@ -49,7 +60,7 @@ DRAFT, PLACES, SWAP, DUEL = "draft", "places", "swap", "duel"
 RINGS = {
     "edge": (85, 15, "At the edge"),
     "mid": (65, 30, "Halfway in"),
-    "horn": (45, 45, "At the mouth of the horn"),
+    "horn": (50, 40, "At the mouth of the horn"),
 }
 
 # Places, in a fixed order (the order is the choice index): emoji, label, hint, tag.
@@ -155,10 +166,13 @@ class Game:
         self.schedule = list(self.arena.schedule)
         self.nemesis = self.arena.nemesis
         self.nemesis_kills = 2  # the bloodbath
+        self.nemesis_health = OPPONENT_HEALTH["nemesis"]  # what they bring to the final fight
+        self.opp_health = 0
+        self.open_visits = 0
 
         self.day = 1
         self.health = 100
-        self.supplies = 2 + (2 if self.district == 9 else 0)
+        self.supplies = START_SUPPLIES + (2 if self.district == 9 else 0)
         self.kit: list[str] = []
         self.gm_due = False
         self.edge_streak = 0
@@ -236,8 +250,10 @@ class Game:
                 lose = self._chips(o["fail"].get("effects", {}), card)
                 out.append(self._opt(i, o["label"], o.get("hint", ""), self._chance(o["roll"]), o.get("tag", "safe"), win, lose))
             else:
-                e = o.get("effects", {})
-                out.append(self._opt(i, o["label"], o.get("hint", ""), None, o.get("tag", "safe"), self._chips(e, card), []))
+                e = self._plain_effects(o)
+                chips = self._chips(e, card)
+                bad = [c for c in chips if c.startswith(("❤️−", "🎒−", "−", "☠️"))]
+                out.append(self._opt(i, o["label"], o.get("hint", ""), None, o.get("tag", "safe"), [c for c in chips if c not in bad], bad))
         return out
 
     def can_use_medkit(self) -> bool:
@@ -295,7 +311,7 @@ class Game:
     def _chips(self, e: dict, card: dict | None = None) -> list[str]:
         out = []
         if "health" in e:
-            n = e["health"] if e["health"] > 0 else -round(-e["health"] * DAMAGE)
+            n = e["health"] if e["health"] > 0 else -self._card_damage(e["health"])
             if n > -self.health:  # a hit that would kill you shows as ☠️ alone, below
                 out.append(f"❤️{_sign(n)}")
         if e.get("supplies"):
@@ -311,13 +327,21 @@ class Game:
             out.append("🎁 a find")
         if e.get("kill"):
             out.append("⚔️ kill")
+        if e.get("wound"):
+            out.append(f"🩸 {self.nemesis_name} −{e['wound']}")
+        if e.get("mercy"):
+            out.append("🕊️ they die in peace")
         if e.get("ally") in ("dies", "lost") and self.allies:
             out.append(f"−{self.allies[0]}")
         if e.get("ally") == "joins_partner":
             out.append(f"+{self.partner}")
-        if e.get("die") or ("health" in e and e["health"] < 0 and round(-e["health"] * DAMAGE) >= self.health):
+        if e.get("die") or ("health" in e and e["health"] < 0 and self._card_damage(e["health"]) >= self.health):
             out.append("☠️")
         return out
+
+    @staticmethod
+    def _card_damage(health_effect: int) -> int:
+        return min(HIT_CAP, round(-health_effect * DAMAGE))
 
     @staticmethod
     def _list(v) -> list:
@@ -470,7 +494,7 @@ class Game:
             branch = opt["success" if ok else "fail"]
             text, effects = branch.get("text", ""), branch.get("effects", {})
         else:
-            text, effects = opt.get("text", ""), opt.get("effects", {})
+            text, effects = opt.get("text", ""), self._plain_effects(opt)
         if near and effects.get("health", 0) < 0 and not effects.get("die"):
             text = "Close call. " + text
         if text:
@@ -618,7 +642,14 @@ class Game:
         return self._chance({"base": 50, "mods": ["forage"]})
 
     def _open_chance(self) -> int:
-        return min(95, OPEN_GIFT + (20 if self.district == 1 else 0))
+        return max(5, min(95, OPEN_GIFT + (20 if self.district == 1 else 0) - OPEN_FADE * self.open_visits))
+
+    def _plain_effects(self, opt: dict) -> dict:
+        """A sure option. One that does nothing at all still costs the day: you find no food."""
+        e = opt.get("effects") or {}
+        if not e and WALK_COST and cards()[self.card]["kind"] == "event":
+            return {"supplies": -WALK_COST}
+        return e
 
     def _place_options(self) -> list[dict]:
         out = []
@@ -626,7 +657,7 @@ class Game:
             emoji, label, hint, tag = PLACES_INFO[key]
             extra = {}
             if key == "stream":
-                win, lose = ["🎒+1"], ["⚔️ others drink here too"]
+                win, lose = [f"🎒+{STREAM_SUPPLIES}"], ["⚔️ others drink here too"]
             elif key == "rocks":
                 win, lose = [f"❤️+{self._hide_heal()}"], ["🎒−1"]
             elif key == "ridge":
@@ -658,7 +689,7 @@ class Game:
             return ("draw", "feast")
         self.days[self.day].append(PLACES_INFO[key][0])
         if key == "stream":
-            self.supplies += 1
+            self.supplies += STREAM_SUPPLIES
             self._say(self._pick("You drink until your stomach hurts and fill everything you have.",
                                  "Cold water, and a few fish too slow to get away."), "result")
         elif key == "rocks":
@@ -668,7 +699,7 @@ class Game:
                                  "A dry hollow under an overhang. You don't move until dark, and you eat more than you'd like."), "result")
         elif key == "ridge":
             if any(w in self.kit for w in lore.HUNTERS):
-                hits = max(0, min(3, int(param or 0)))
+                hits = sum(self._reveal(HUNT_SHOT)[1] for _ in range(3))
                 if hits:
                     self.supplies += hits * (2 if self.district == 10 else 1)
                     self._say(f"{hits} hit{'s' if hits > 1 else ''}. You eat well tonight.", "result")
@@ -694,6 +725,7 @@ class Game:
                 self._apply({"gift": True}, {})
         elif key == "open":
             _, ok, _ = self._reveal(self._open_chance())
+            self.open_visits += 1
             if ok:
                 self._gift()
             else:
@@ -722,14 +754,18 @@ class Game:
         # Everyone but you and one rival goes. Your ally first (only one can win), then the nemesis.
         if self.allies:
             self.opponent_id = self.opponent = self.allies[0]
+            self.opp_health = OPPONENT_HEALTH["ally"]
         elif self.nemesis in self.pool:
             self.opponent_id = self.nemesis
             self.opponent = f"{self.nemesis_name} ({self.nemesis[4:]})"
+            self.opp_health = self.nemesis_health
         elif self.pool:
             self.opponent_id = self.pool[-1]
             self.opponent = self._name(self.pool[-1])
+            self.opp_health = OPPONENT_HEALTH["other"]
         else:
             self.opponent_id = self.opponent = "the last Career"
+            self.opp_health = OPPONENT_HEALTH["other"]
         rest = [t for t in self.pool if t != self.opponent_id]
         rest_allies = [a for a in self.allies if a != self.opponent_id]
         self.pool = [t for t in self.pool if t == self.opponent_id]
@@ -744,7 +780,8 @@ class Game:
         self.card = DUEL
         self.duel_wins = self.duel_losses = 0
         self.days[self.day].append("⚔️")
-        text = f"Two tributes left. You, and {self.opponent}, face to face on the horn. First to win two rounds."
+        text = (f"Two tributes left. You, and {self.opponent}, face to face on the horn. "
+                f"You have {self.health} health. They have {self.opp_health}.")
         self._say(text + " " + self._edge_text(), "event")
 
     def _edge_text(self) -> str:
@@ -757,56 +794,60 @@ class Game:
 
     def _edges(self) -> list[tuple[str, str, int, set]]:
         out = []
-        weapons = [w for w in self.kit if w in lore.WEAPONS]
-        if weapons:
-            w = max(weapons, key=lambda k: lore.WEAPONS[k])
+        w = self._weapon()
+        if w:
             out.append((f"your {lore.item_name(w)}", lore.item_emoji(w), lore.WEAPONS[w], {"press"}))
-        hw = health_word(self.health)
-        hv = {"Good": 15, "Fair": 0, "Poor": -15, "Very poor": -25}[hw]
-        if hv:
-            out.append(("good health" if hv > 0 else f"{hw.lower()} health", "❤️", hv, {"press", "hold"}))
-        if self.kills >= 2:
-            out.append((f"{self.kills} kills behind you", "⚔️", 10, {"press"}))
-        if self.district == 2:
-            out.append(("Career training", "🛡️", 10, {"press"}))
+        if self.kills:
+            out.append((f"{self.kills} kill{'s' if self.kills > 1 else ''} behind you", "⚔️", min(FIGHT_KILLS_CAP, FIGHT_PER_KILL * self.kills), {"press"}))
         if "rope" in self.kit:
             out.append(("the high ground", "🪢", 15, {"hold"}))
         if self.supplies >= 2:
             out.append(("a full stomach", "🎒", 10, {"hold"}))
-        if self.opponent_id == self.nemesis:
-            v = min(15, 3 * self.nemesis_kills)
-            out.append((f"their {self.nemesis_kills} kills", "🩸", -v, {"press", "hold"}))
         return out
 
-    def _duel_chance(self, how: str) -> int:
-        return max(5, min(95, DUEL_BASE + sum(v for _, _, v, a in self._edges() if how in a)))
+    def _weapon(self) -> str | None:
+        weapons = [w for w in self.kit if w in lore.WEAPONS]
+        return max(weapons, key=lambda k: lore.WEAPONS[k]) if weapons else None
+
+    def _fight_chance(self, how: str) -> int:
+        base = FIGHT[how][0]
+        return max(5, min(95, base + sum(v for _, _, v, a in self._edges() if how in a)))
+
+    def _fight_deal(self, how: str) -> int:
+        w = self._weapon()
+        return FIGHT[how][1] + (FIGHT_WEAPON_DMG * lore.WEAPONS[w] // 10 if w and how == "press" else 0)
+
+    def _fight_take(self, how: str) -> int:
+        return FIGHT[how][2] + (FIGHT_NEMESIS_HIT if self.opponent_id == self.nemesis and how == "press" else 0)
 
     def _duel_options(self) -> list[dict]:
         out = []
         for i, (how, label, tag) in enumerate((("press", "Press the attack", "bold"), ("hold", "Hold your ground", "safe"))):
             edges = [f"{lbl[0].upper()}{lbl[1:]} {_sign(v)}" for lbl, _, v, a in self._edges() if how in a]
             hint = " · ".join(edges) if edges else "Nothing on your side but luck."
-            dmg = DUEL_HIT[how]
-            win = ["👑"] if self.duel_wins == 1 else ["round won"]
-            lose = [f"❤️−{dmg}"] + (["☠️"] if self.duel_losses == 1 or dmg >= self.health else [])
-            out.append(self._opt(i, label, hint, self._duel_chance(how), tag, win, lose))
+            deal, take = self._fight_deal(how), self._fight_take(how)
+            win = ["👑"] if deal >= self.opp_health else [f"🩸 them −{deal}"]
+            lose = [f"❤️−{take}"] + (["☠️"] if take >= self.health else [])
+            out.append(self._opt(i, label, hint, self._fight_chance(how), tag, win, lose))
         return out
 
     def _resolve_duel(self, index: int) -> str | None:
         how = ("press", "hold")[index]
-        _, ok, near = self._reveal(self._duel_chance(how))
+        _, ok, near = self._reveal(self._fight_chance(how))
         if ok:
             self.duel_wins += 1
+            self.opp_health -= self._fight_deal(how)
             self._say(self._pick("You drive them back across the gold.", "Your blow lands. They stagger.") if how == "press"
                       else self._pick("They come at you and overreach. You make them pay.", "You hold. They tire first."), "result")
         else:
             self.duel_losses += 1
-            dmg = DUEL_HIT[how] // (2 if near else 1)
+            dmg = self._fight_take(how) // (2 if near else 1)
             self._say(("Close. " if near else "") + self._pick("They're faster than you.", "You slip on the wet gold."), "result")
             self._hurt(dmg, f"{self.opponent}, in the final duel")
             if self.over:
                 return None
-        if self.duel_wins == 2:
+        if self.opp_health <= 0:
+            self.opp_health = 0
             self._say(self._pick("It's over. The trumpets sound.", "They fall. You don't."), "result")
             if self.opponent_id in self.allies:
                 self.allies.remove(self.opponent_id)
@@ -814,12 +855,8 @@ class Game:
             self.kills += 1
             self.new_kills.append(self.opponent)
             self._win()
-        elif self.duel_losses == 2:
-            self._die(f"{self.opponent}, in the final duel")
-        else:
-            rnd = self.duel_wins + self.duel_losses + 1
-            return f"Round {rnd} of 3. You {self.duel_wins}, {self.opponent} {self.duel_losses}. {self._edge_text()}"
-        return None
+            return None
+        return f"{self.opponent}: {self.opp_health} health. You: {self.health}. {self._edge_text()}"
 
     # ------------------------------------------------------------------ effects
     def _apply(self, e: dict, card: dict, near: bool = False) -> str | None:
@@ -840,6 +877,16 @@ class Game:
                 self._gain(item)
         if e.get("kill"):
             self._kill(e["kill"])
+        if e.get("wound") and self.nemesis in self.pool:  # carried into the final fight
+            self.nemesis_health = max(30, self.nemesis_health - e["wound"])
+        if e.get("mercy") and self.target in self.pool:  # they die, but it isn't your kill
+            self.pool.remove(self.target)
+            self.fallen_today.append(self.target)
+            self.target = None
+            for d in range(self.day, MAX_DAYS + 1):
+                if self.schedule[d] > 0:
+                    self.schedule[d] -= 1
+                    break
         if e.get("partner_dies") and "partner" in self.pool:
             self.pool.remove("partner")
             self.fallen_today.append("partner")
@@ -855,7 +902,7 @@ class Game:
             self.allies.append(self.partner)
         if "health" in e:
             if e["health"] < 0:
-                dmg = round(-e["health"] * DAMAGE)
+                dmg = self._card_damage(e["health"])
                 self._hurt(dmg // 2 if near else dmg, cause)
             else:
                 self.health = min(100, self.health + e["health"])
@@ -1074,7 +1121,7 @@ class Game:
             "remaining": self.remaining,
             "allies": list(self.allies),
             "can_use": "medkit" if self.can_use_medkit() else None,
-            "duel": [self.duel_wins, self.duel_losses] if self.card == DUEL else None,
+            "duel": {"opponent": self.opponent, "health": self.opp_health} if self.card == DUEL else None,
         }
 
     def emoji_row(self) -> str:

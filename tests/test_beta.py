@@ -9,7 +9,7 @@ from hungertrail.beta.bots import BOTS, play
 from hungertrail.beta.engine import DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SWAP, USE, Game, cards, new_setup, replay
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
-KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies"}
+KNOWN_EFFECTS = {"mercy", "wound", "health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies"}
 KNOWN_NEEDS = {"item", "any", "perk", "ally", "supplies"}
 
 
@@ -108,23 +108,48 @@ def test_kills_take_the_named_tribute():
     assert g.fallen_today[-1] not in g.pool
 
 
-def test_duel_is_best_of_three_with_edges():
+def test_final_fight_runs_on_health_with_edges():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
     g.kit = ["bow", "rope"]
     g.allies = []
+    g.nemesis_health = 60  # wounded earlier in the run
     g._start_duel()
     assert g.card == DUEL and g.opponent_id == g.nemesis and g.remaining == 2
     text = g.log[-1]["text"]
-    assert "your bow" in text and "the high ground" in text and "kills" in text
+    assert "your bow" in text and "the high ground" in text and "They have 60" in text
     press, hold = g.options()
     assert "Your bow +15" in press["hint"] and "The high ground +15" in hold["hint"]
-    for _ in range(3):
+    assert press["chance"] == engine.FIGHT["press"][0] + 15
+    for _ in range(40):
         if g.over:
             break
         g.choose(0)
     assert g.over and (g.won or g.cause.endswith("in the final duel"))
-    assert g.duel_wins + g.duel_losses <= 3
+    assert g.won == (g.opp_health == 0)
+
+
+def test_mercy_is_not_a_kill():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.target = next(t for t in g.pool if t.startswith("the District"))
+    g._apply({"mercy": True}, {})
+    assert g.kills == 0 and g.target is None and g.fallen_today
+
+
+def test_walking_away_costs_a_day_of_supplies():
+    g = Game(5, 9, SETUP)
+    g.card = "smoke_east"
+    walk = next(o for o in g.options() if o["label"] == "Go the other way")
+    assert walk["lose"] == [f"🎒−{engine.WALK_COST}"]
+
+
+def test_one_card_miss_never_kills_from_full_health():
+    g = Game(5, 9, SETUP)
+    for c in cards().values():
+        for o in c["options"]:
+            if "roll" in o and not o["fail"].get("effects", {}).get("die"):
+                assert "☠️" not in g._chips(o["fail"].get("effects", {})), (c["id"], o["label"])
 
 
 def test_places_are_seeded_and_the_edge_closes():

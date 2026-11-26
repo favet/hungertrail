@@ -1998,7 +1998,7 @@
     effects:
       supplies: -1
       sponsor: true
-      kill: 1
+      mercy: true
   - label: End it
     tag: bold
     text: Mercy, of a kind.
@@ -2360,10 +2360,32 @@
       text: They walk on. Now you know what you're up against.
       effects: {}
     fail:
-      text: They see you. They smile. They cut you once
-      just to remember you by.: null
+      text: 'They see you. They smile. They cut you once, just to remember you by.'
       effects:
         health: -18
+        cause: '{nemesis}'
+  - label: Ambush them
+    need:
+      any:
+      - knife
+      - spear
+      - axe
+      - bow
+      - trident
+    hint: You won't finish them. You can make the final fight shorter.
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - combat
+    success:
+      text: You open a deep cut along their ribs and vanish before they turn. They'll carry it to the end.
+      effects:
+        wound: 40
+    fail:
+      text: They turn faster than anyone should.
+      effects:
+        health: -22
         cause: '{nemesis}'
   - label: Follow them to their camp
     tag: bold
@@ -2403,15 +2425,15 @@
       mods:
       - combat
     success:
-      text: The Capitol's favorite killer falls
-      and the Capitol has a new favorite.: null
+      text: 'The Capitol''s favorite killer falls, and the Capitol has a new favorite.'
       effects:
         kill: 1
         sponsor: true
     fail:
-      text: They're everything the Capitol said they were.
+      text: They're everything the Capitol said they were. But you marked them too.
       effects:
         health: -30
+        wound: 30
         cause: '{nemesis}'
   - label: Run
     tag: safe

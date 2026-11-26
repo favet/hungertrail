@@ -59,7 +59,13 @@ def smart(g: Game, r: random.Random):
             return worst, None
         return opts[-1]["index"], None
     if g.card == DUEL:
-        return _best(opts, lambda o: o["chance"])["index"], None
+        def ev(o):
+            c = o["chance"] / 100
+            how = ("press", "hold")[o["index"]]
+            if g._fight_deal(how) >= g.opp_health:
+                return 1000 * c
+            return c * g._fight_deal(how) - (1 - c) * g._fight_take(how) * (1.5 if g.health < 40 else 1)
+        return _best(opts, ev)["index"], None
     if g.card == PLACES:
         by = {o["place"]: o for o in opts}
         safe_from_gm = {k: o for k, o in by.items() if not any("Gamemakers" in x for x in o["lose"])}
@@ -68,7 +74,7 @@ def smart(g: Game, r: random.Random):
             for k in ("rocks", "stream", "open"):
                 if k in by and (k in safe_from_gm or g.health < 30):
                     return by[k]["index"], hunt
-        if g.supplies <= 1:
+        if g.supplies <= 2:
             for k in ("stream", "ridge"):
                 if k in safe_from_gm:
                     return by[k]["index"], hunt
@@ -85,7 +91,11 @@ def smart(g: Game, r: random.Random):
         if o["deadly"]:
             v -= 40
         v -= 5 * sum(1 for x in o["lose"] if x.startswith("❤️"))
+        v -= (15 if g.supplies <= 1 else 3) * sum(1 for x in o["lose"] if x.startswith("🎒−"))
+        if g.supplies <= 1 and any(x.startswith("🎒+") for x in o["win"]):
+            v += 20
         v += 5 * len(o["win"])
+        v += 15 * sum(1 for x in o["win"] if x.startswith("🩸"))
         return v
 
     return _best(opts, value)["index"], r.choice([1, 2, 2, 3])

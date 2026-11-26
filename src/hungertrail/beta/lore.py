@@ -8,7 +8,7 @@ from ..game.lore import CAPITOL, DEFAULT_NAMES, DISTRICTS, GAMES, HORN, HOST  # 
 # One small perk per district, from its industry. Each one names the roll or rule it changes.
 PERKS = {
     1: ("Pampered", "The Capitol already loves you. +20 on sponsor gifts out in the open."),
-    2: ("Trained", "+10 in every fight."),
+    2: ("Trained", "+10 in fights along the way (not the final fight)."),
     3: ("Tinkerer", "You can set snares on the ridge without rope, and they catch more."),
     4: ("Fisher", "+30 in the water."),
     5: ("Quick", "+10 when running or climbing."),
