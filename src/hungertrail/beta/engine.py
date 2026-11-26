@@ -54,23 +54,23 @@ EDGE_CLOSES = 6  # from this day the edge places are gone
 USE = 99  # choice index for tapping the medkit in your kit
 DRAFT, PLACES, SWAP, DUEL, SIFT = "draft", "places", "swap", "duel", "sift"
 
-# The sift: a 5x5 grid of rubble at the horn. Dig quietly (costs a day of supplies) or loudly (free,
-# more digs, but Careers hear it). A small dig turns one tile; a big dig turns a cross of five.
-SIFT_SIZE = 5
-SIFT_DIGS = {"quiet": 3, "loud": 6}
-SIFT_SMALL, SIFT_BIG, SIFT_STOP = 10, 40, 70  # choice index = SIFT_SMALL + tile, SIFT_BIG + tile
-SIFT_TILES = {
-    # what: emoji, what the screen calls it
-    "food": ("🥫", "food"),
-    "clue": ("🔮", "a Capitol map"),
-    "snare": ("🪤", "a snare"),
-    "mine": ("💥", "a mine"),
-    "career": ("👁️", "a Career"),
-    "empty": ("·", "rubble"),
-}
+# The sift, after Slay the Spire's Crystal Sphere: a 9x9 grid of rubble at the horn hides treasures
+# that each cover several tiles, and a few traps. A treasure is yours only once every tile of it is
+# uncovered. A small dig opens one tile, a big dig a 3x3. Dig quietly (4 digs, costs a day of supplies)
+# or loudly (6 digs, free, but Careers hear you and lie in wait in the rubble).
+SIFT_SIZE = 9
+SIFT_DIGS = {"quiet": 4, "loud": 6}
+SIFT_SMALL, SIFT_BIG, SIFT_STOP = 100, 200, 300  # choice index = SIFT_SMALL + tile, SIFT_BIG + tile
+# What's buried: (kind, width, height). Items are picked from the pools by the daily seed.
+SIFT_TREASURES = [("crate", 3, 3), ("weapon", 3, 1), ("pack", 2, 2), ("pack", 2, 2), ("tool", 2, 1),
+                  ("can", 1, 1), ("can", 1, 1), ("can", 1, 1)]
+SIFT_POOLS = {"crate": ("bow", "trident", "medkit"), "weapon": ("spear", "axe", "knife"),
+              "tool": ("rope", "iodine", "sleeping_bag")}
+SIFT_TRAPS = [("mine", 1, 1), ("snare", 2, 1)]
+SIFT_CAREERS = [("career", 2, 1), ("career", 1, 2)]  # only when you dig loudly
 SIFT_HURT = {"snare": (12, "a snare in the rubble"), "mine": (30, "a mine left from the bloodbath"),
              "career": (25, "a Career who heard you digging")}
-SIFT_ITEMS = ("knife", "rope", "medkit", "iodine", "sleeping_bag", "spear", "axe", "knife", "rope", "medkit", "bow")
+SIFT_TRAP_NAMES = {"mine": ("💥", "a mine"), "snare": ("🪤", "a snare"), "career": ("👁️", "a Career")}
 
 # Cornucopia rings: base odds, damage on a miss, how it reads.
 RINGS = {
@@ -270,7 +270,9 @@ class Game:
                     out.append(self._opt(i, o["label"], o.get("hint", "") or "Hold to stay down. Let go to breathe.", None,
                                          o.get("tag", "safe"), win, lose, minigame=self._hide_params(card["id"], o["roll"]["base"])))
                     continue
-                out.append(self._opt(i, o["label"], o.get("hint", ""), self._chance(o["roll"]), o.get("tag", "safe"), win, lose))
+                fe = o["fail"].get("effects", {})
+                odds = {**self._odds(o["roll"]), "near": fe.get("health", 0) < 0 and not fe.get("die")}
+                out.append(self._opt(i, o["label"], o.get("hint", ""), odds["chance"], o.get("tag", "safe"), win, lose, wheel=odds))
             else:
                 e = o.get("effects", {})
                 out.append(self._opt(i, o["label"], o.get("hint", ""), None, o.get("tag", "safe"), self._chips(e, card), []))
@@ -291,7 +293,8 @@ class Game:
         o = valid[index]
         self.last = (o["label"], o["chance"], self.health)
         snap = self._snap()
-        self._say(o["label"], "choice")
+        if o["label"]:
+            self._say(o["label"], "choice")
         game = o.get("minigame")
         if self.card == DRAFT:
             dest = self._resolve_draft(index)
@@ -308,7 +311,7 @@ class Game:
         self._delta(snap)
         if dest and dest[0] == "round":
             if dest[1]:
-                self._say(dest[1], "prompt")  # the next round, after this round's result
+                self._say(dest[1], "round")  # the next round, after this round's result
             return
         self._advance(dest)
 
@@ -373,12 +376,13 @@ class Game:
             if i in self.taken:
                 continue
             base, dmg, where = RINGS[ring]
-            chance = self._chance({"base": base - 15 * self.grabs, "mods": ["escape", "grab"]})
+            odds = {**self._odds({"base": base - 15 * self.grabs, "mods": ["escape", "grab"]}), "near": True}
+            chance = odds["chance"]
             desc = f"{lore.PACKS[item][2]} days of supplies." if item in lore.PACKS else lore.ITEMS[item][2]
             lose = [f"❤️−{dmg}"] + (["☠️"] if dmg >= self.health else [])
             out.append(self._opt(i, f"Grab the {lore.item_name(item)}", f"{where}. {desc}", chance,
                                  "bold" if ring != "edge" else "safe",
-                                 [f"{lore.item_emoji(item)} {lore.item_name(item)}"], lose))
+                                 [f"{lore.item_emoji(item)} {lore.item_name(item)}"], lose, wheel=odds))
         label = "Run for the trees" if not self.grabs else "Run while you can"
         hint = "You'll arrive with nothing but your life." if not self.grabs else "Take what you have and go."
         out.append(self._opt(len(self.arena.layout), label, hint, None, "hide", [], []))
@@ -395,11 +399,11 @@ class Game:
             return ("bloodbath",)
         item, ring = self.arena.layout[index]
         base, dmg, _ = RINGS[ring]
-        chance = self._chance({"base": base - 15 * self.grabs, "mods": ["escape", "grab"]})
+        odds = self._odds({"base": base - 15 * self.grabs, "mods": ["escape", "grab"]})
         self.taken.add(index)
         self.grabs += 1
-        roll, ok, near = self._reveal(chance)
         name = lore.item_name(item)
+        roll, ok, near = self._reveal(odds, f"Grab the {name}", f"you get the {name}")
         if ok:
             self._say(self._pick(f"You snatch the {name} and keep moving.", f"The {name} is yours. Nobody touched you."), "result")
             self._take(item)
@@ -524,7 +528,9 @@ class Game:
             branch = opt["success" if ok else "fail"]
             text, effects = branch.get("text", ""), branch.get("effects", {})
         elif "roll" in opt:
-            _, ok, near = self._reveal(self._chance(opt["roll"]))
+            fe = opt["fail"].get("effects", {})
+            _, ok, near = self._reveal(self._odds(opt["roll"]), self._fmt(opt["label"]),
+                                       near_counts=fe.get("health", 0) < 0 and not fe.get("die"))
             branch = opt["success" if ok else "fail"]
             text, effects = branch.get("text", ""), branch.get("effects", {})
         else:
@@ -583,6 +589,7 @@ class Game:
         return True
 
     def _night(self) -> None:
+        self._say("Night falls.", "night")  # the screen starts a new scene here
         snap = self._snap()
         fed = self.supplies > 0
         if fed:
@@ -668,15 +675,22 @@ class Game:
     def _hide_heal(self) -> int:
         return HIDE_HEAL * (2 if self.district == 7 else 1) + (15 if "sleeping_bag" in self.kit else 0)
 
-    def _ridge_chance(self) -> int:
+    def _ridge_odds(self) -> dict:
         if self.district == 3:
-            return 90
+            return {"chance": 90, "base": 50, "edges": [{"icon": "3", "label": "District 3: snares", "delta": 40}]}
         if "rope" in self.kit:
-            return 70
-        return self._chance({"base": 50, "mods": ["forage"]})
+            return {"chance": 70, "base": 50, "edges": [{"icon": lore.item_emoji("rope"), "label": "rope: snares", "delta": 20}]}
+        return self._odds({"base": 50, "mods": ["forage"]})
+
+    def _ridge_chance(self) -> int:
+        return self._ridge_odds()["chance"]
+
+    def _open_odds(self) -> dict:
+        edges = [{"icon": "1", "label": "District 1", "delta": 20}] if self.district == 1 else []
+        return {"chance": min(95, OPEN_GIFT + (20 if self.district == 1 else 0)), "base": OPEN_GIFT, "edges": edges}
 
     def _open_chance(self) -> int:
-        return min(95, OPEN_GIFT + (20 if self.district == 1 else 0))
+        return self._open_odds()["chance"]
 
     def _place_options(self) -> list[dict]:
         out = []
@@ -754,11 +768,12 @@ class Game:
                 else:
                     self._played("hunt", False, "MISSED", "everything")
                     self._say("You miss everything. The noise carries.", "result")
-                    if not self._roll(70):
+                    _, quiet, _ = self._reveal(self._flat(70), "Nobody hears you", near_counts=False)
+                    if not quiet:
                         self._say("Someone heard.", "result")
                         self._hurt(20, "a tribute who heard you hunting")
             else:
-                _, ok, _ = self._reveal(self._ridge_chance())
+                _, ok, _ = self._reveal(self._ridge_odds(), "Forage up high", near_counts=False)
                 if ok:
                     snares = self.district == 3 or "rope" in self.kit
                     self.supplies += 2 if self.district == 3 or not snares else 1
@@ -770,7 +785,7 @@ class Game:
             self._start_sift()
             return ("sift",)
         elif key == "open":
-            _, ok, _ = self._reveal(self._open_chance())
+            _, ok, _ = self._reveal(self._open_odds(), "Hope for a sponsor", near_counts=False)
             if ok:
                 self._gift()
             else:
@@ -822,46 +837,79 @@ class Game:
 
     # ------------------------------------------------------------------ the sift
     def _start_sift(self) -> None:
+        """Bury today's treasures and traps. The layout comes from the daily seed: the same for everyone."""
         r = _rng(self.seed, "sift", self.day)
-        n = SIFT_SIZE * SIFT_SIZE
-        items = r.sample(SIFT_ITEMS, 2)
-        tiles = ["food"] * 5 + [f"item:{i}" for i in items] + ["clue", "snare", "snare", "mine"]
-        tiles += ["empty"] * (n - len(tiles))
-        r.shuffle(tiles)
-        careers = r.sample([i for i, t in enumerate(tiles) if t == "empty"], 2)  # only there if you dig loudly
-        self.sift = {"tiles": tiles, "careers": careers, "open": [], "digs": 0, "how": None, "clue": False, "found": []}
+        n = SIFT_SIZE
 
-    def _sift_tile(self, i: int) -> str:
-        if self.sift["how"] == "loud" and i in self.sift["careers"]:
-            return "career"
-        return self.sift["tiles"][i]
+        def place(w: int, h: int, taken: set[int], gap: int) -> list[int] | None:
+            if w != h and r.random() < 0.5:
+                w, h = h, w
+            for _ in range(200):
+                x, y = r.randrange(n - w + 1), r.randrange(n - h + 1)
+                cells = [(y + dy) * n + x + dx for dy in range(h) for dx in range(w)]
+                # keep a gap around every shape, so two never touch and a piece's edges read true
+                ring = {(y + dy) * n + x + dx for dy in range(-gap, h + gap) for dx in range(-gap, w + gap)
+                        if 0 <= x + dx < n and 0 <= y + dy < n}
+                if not ring & taken:
+                    taken.update(cells)
+                    return cells
+            return None
 
-    @staticmethod
-    def _cross(i: int) -> list[int]:
-        x, y = i % SIFT_SIZE, i // SIFT_SIZE
-        out = [i]
-        for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
-            if 0 <= x + dx < SIFT_SIZE and 0 <= y + dy < SIFT_SIZE:
-                out.append((y + dy) * SIFT_SIZE + x + dx)
-        return out
+        for attempt in range(100):
+            gap = 1 if attempt < 90 else 0
+            taken: set[int] = set()
+            shapes = []
+            for kind, w, h in SIFT_TREASURES:
+                what = r.choice(SIFT_POOLS[kind]) if kind in SIFT_POOLS else ""
+                shapes.append({"kind": kind, "item": what, "cells": place(w, h, taken, gap), "trap": False, "done": False})
+            for kind, w, h in SIFT_TRAPS + SIFT_CAREERS:
+                shapes.append({"kind": kind, "item": "", "cells": place(w, h, taken, gap), "trap": True, "done": False,
+                               "loud_only": kind == "career"})
+            if all(s["cells"] for s in shapes):
+                break
+        self.sift = {"shapes": shapes, "open": [], "digs": 0, "how": None}
+
+    def _sift_shapes(self) -> list[dict]:
+        """The shapes in play: Careers only hide in the rubble if you dig loudly."""
+        sf = self.sift
+        return [s for s in sf["shapes"] if not s.get("loud_only") or sf["how"] == "loud"]
+
+    def _sift_at(self, i: int) -> dict | None:
+        return next((s for s in self._sift_shapes() if i in s["cells"]), None)
+
+    def _sift_name(self, s: dict) -> tuple[str, str]:
+        if s["trap"]:
+            return SIFT_TRAP_NAMES[s["kind"]]
+        if s["kind"] == "pack":
+            return "🎒", "a pack: 2 days of food"
+        if s["kind"] == "can":
+            return "🥫", "a can: a day of food"
+        return lore.item_emoji(s["item"]), ("a crate with a " if s["kind"] == "crate" else "a ") + lore.item_name(s["item"])
+
+    def _area(self, i: int, big: bool) -> list[int]:
+        if not big:
+            return [i]
+        n = SIFT_SIZE
+        x, y = i % n, i // n
+        return [(y + dy) * n + x + dx for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                if 0 <= x + dx < n and 0 <= y + dy < n]
 
     def _sift_options(self) -> list[dict]:
         sf = self.sift
         if sf["how"] is None:
             out = []
             if self.supplies >= 1:
-                out.append(self._opt(0, "Dig quietly", "Three digs. Slow work, and it costs you a day's food.", None, "safe",
-                                     [f"⛏️×{SIFT_DIGS['quiet']}"], ["🎒−1"]))
-            out.append(self._opt(1, "Dig loudly", "Six digs, and fast. Careers will hear it.", None, "bold",
-                                 [f"⛏️×{SIFT_DIGS['loud']}"], ["👁️ Careers in the rubble"]))
-            out.append(self._opt(2, "Leave the rubble", "Look around the horn instead.", None, "safe", [], []))
+                out.append(self._opt(0, "Dig quietly", "Slow and careful. It takes all day.", None, "safe",
+                                     [f"{SIFT_DIGS['quiet']} digs"], ["a day of food"]))
+            out.append(self._opt(1, "Dig loudly", "Fast and noisy. Careers will come looking.", None, "bold",
+                                 [f"{SIFT_DIGS['loud']} digs"], ["Careers hide in the rubble"]))
             return out
         out = []
         for i in range(SIFT_SIZE * SIFT_SIZE):
             if i in sf["open"]:
                 continue
-            out.append(self._opt(SIFT_SMALL + i, "Dig here", "", None, "safe", [], [], dig=i, big=False))
-            out.append(self._opt(SIFT_BIG + i, "Dig wide here", "", None, "bold", [], [], dig=i, big=True))
+            out.append(self._opt(SIFT_SMALL + i, "", "", None, "safe", [], [], dig=i, big=False))
+            out.append(self._opt(SIFT_BIG + i, "", "", None, "bold", [], [], dig=i, big=True))
         out.append(self._opt(SIFT_STOP, "Stop digging", "Keep what you've found and get clear.", None, "safe", [], []))
         return out
 
@@ -869,87 +917,105 @@ class Game:
         sf = self.sift
         if not sf or self.card != SIFT:
             return None
+        n = SIFT_SIZE
+        ids = {id(s): k for k, s in enumerate(sf["shapes"])}
         tiles = []
-        for i in range(SIFT_SIZE * SIFT_SIZE):
-            if i in sf["open"]:
-                what = self._sift_tile(i)
-                near = [j for j in self._cross(i)[1:] if j not in sf["open"]]
-                kinds = [self._sift_tile(j) for j in near]
-                tiles.append({
-                    "open": True,
-                    "emoji": lore.item_emoji(what[5:]) if what.startswith("item:") else SIFT_TILES[what][0],
-                    "glint": any(k.startswith("item:") for k in kinds),
-                    "scorch": any(k in SIFT_HURT for k in kinds),
-                })
-            else:
-                tiles.append({"open": False, "marked": sf["clue"] and self._sift_tile(i).startswith("item:")})
-        return {"size": SIFT_SIZE, "digs": sf["digs"], "how": sf["how"], "tiles": tiles}
+        for i in range(n * n):
+            if i not in sf["open"]:
+                tiles.append({"open": False})
+                continue
+            s = self._sift_at(i)
+            if not s:
+                tiles.append({"open": True})
+                continue
+            x, y = i % n, i // n
+            same = lambda j: j in s["cells"]  # noqa: E731
+            tiles.append({
+                "open": True, "shape": ids[id(s)], "icon": self._sift_name(s)[0], "trap": s["trap"], "done": s["done"],
+                # which sides are the treasure's outer edge, so you can read its size from a piece
+                "edge": "".join(c for c, j, ok in (("t", i - n, y > 0), ("r", i + 1, x < n - 1),
+                                                    ("b", i + n, y < n - 1), ("l", i - 1, x > 0))
+                                if not ok or not same(j)),
+            })
+        legend = []
+        for k, s in enumerate(self._sift_shapes()):
+            icon, name = self._sift_name(s)
+            xs = sorted({c % n for c in s["cells"]})
+            ys = sorted({c // n for c in s["cells"]})
+            # the size without its orientation: a piece's edges tell you which way it lies
+            legend.append({"shape": ids[id(s)], "icon": icon, "name": name, "w": max(len(xs), len(ys)), "h": min(len(xs), len(ys)),
+                           "trap": s["trap"], "done": s["done"],
+                           "found": sum(c in sf["open"] for c in s["cells"])})
+        return {"size": n, "digs": sf["digs"], "how": sf["how"], "tiles": tiles, "legend": legend}
 
     def _resolve_sift(self, index: int) -> tuple:
         sf = self.sift
         if sf["how"] is None:
-            if index == 2:
-                return self._end_sift(dug=False)
             sf["how"] = ("quiet", "loud")[index]
-            sf["digs"] = SIFT_DIGS[sf["how"]]
+            sf["digs"] = SIFT_DIGS[sf["how"]] + (1 if "axe" in self.kit else 0)
             if sf["how"] == "quiet":
                 self.supplies -= 1
-                self._say("You work slowly, lifting one plank at a time. It takes all day.", "result")
+                self._say("You work slowly, lifting one plank at a time.", "result")
             else:
                 self._say("You tear into the rubble with both hands. Anyone nearby can hear it.", "result")
-            self._say("Tap a tile to dig. Dig wide to turn five at once. ✨ means something good is next door; "
-                      "🔥 means something isn't.", "prompt")
             return ("round", None)
         if index == SIFT_STOP:
             return self._end_sift()
         big = index >= SIFT_BIG
         tile = index - (SIFT_BIG if big else SIFT_SMALL)
         sf["digs"] -= 1
-        found, ended = [], False
-        for i in (self._cross(tile) if big else [tile]):
-            if i in sf["open"]:
-                continue
-            sf["open"].append(i)
-            what = self._sift_tile(i)
-            if what == "food":
-                self.supplies += 1
-                found.append("🥫")
-            elif what.startswith("item:"):
-                item = what[5:]
-                self._gain(item)
-                found.append(lore.item_emoji(item))
-            elif what == "clue":
-                sf["clue"] = True
-                found.append("🔮")
-                nxt = self.arena.offers.get(self.day + 1)
-                tomorrow = f" It shows where you can get to tomorrow: {', '.join('the ' + k for k in nxt)}." if nxt else ""
-                self._say("A Capitol map, half burned. Someone marked where the good finds are." + tomorrow, "gift")
-            elif what in SIFT_HURT:
-                dmg, cause = SIFT_HURT[what]
-                found.append(SIFT_TILES[what][0])
+        dug = [i for i in self._area(tile, big) if i not in sf["open"]]
+        sf["open"].extend(dug)
+        touched = []
+        for i in dug:
+            s = self._sift_at(i)
+            if s and s not in touched:
+                touched.append(s)
+        got, hurt, pieces = [], [], []
+        for s in touched:
+            icon, name = self._sift_name(s)
+            if s["trap"]:
+                if s["done"]:
+                    continue
+                s["done"] = True
+                sf["open"].extend(c for c in s["cells"] if c not in sf["open"])  # it goes off: all of it shows
+                dmg, cause = SIFT_HURT[s["kind"]]
+                hurt.append(icon)
                 self._say({"snare": "A wire snaps tight around your wrist.",
                            "mine": "The ground under the plank clicks.",
-                           "career": "A hand grabs your collar from behind the crate."}[what], "result")
+                           "career": "A hand grabs your collar from behind the crate."}[s["kind"]], "result")
                 self._hurt(dmg, cause)
                 if self.over:
                     return ()
-                ended = ended or what == "career"
-        hurt = any(f in ("🪤", "💥", "👁️") for f in found)
-        # Green for a find, red for a trap, amber for plain dirt.
-        self._played("sift", bool(found) and not hurt, " ".join(found) if found else "EMPTY",
-                     ("dig wide" if big else "dig") + ("" if found else " · just dirt"), near=not found)
-        if ended:
-            self._say("You tear free and run. The digging is over.", "result")
-            return self._end_sift()
+            elif all(c in sf["open"] for c in s["cells"]) and not s["done"]:
+                s["done"] = True
+                got.append(icon)
+                if s["kind"] in ("pack", "can"):
+                    self.supplies += 2 if s["kind"] == "pack" else 1
+                else:
+                    self._gain(s["item"])
+            elif not s["done"]:
+                pieces.append(icon)
+        if hurt:
+            label, ok, near = "HURT " + " ".join(hurt), False, False
+        elif got:
+            label, ok, near = "FOUND " + " ".join(got), True, False
+        elif pieces:
+            label, ok, near = "PART OF " + " ".join(pieces), False, True
+        else:
+            label, ok, near = "EMPTY", False, True
+        self._played("sift", ok, label, "", near=near)
         if sf["digs"] <= 0:
             return self._end_sift()
         return ("round", None)
 
     def _end_sift(self, dug: bool = True) -> tuple:
+        half = [self._sift_name(s)[1] for s in self._sift_shapes()
+                if not s["trap"] and not s["done"] and any(c in self.sift["open"] for c in s["cells"])]
         self.sift = None
         self.card = ""
         if dug:
-            self._say("You leave the rubble behind.", "result")
+            self._say(f"You leave {' and '.join(half)} half dug." if half else "You leave the rubble behind.", "result")
         card = self._place_card("horn")
         if card:
             return ("draw", card)
@@ -1174,46 +1240,65 @@ class Game:
 
     # ------------------------------------------------------------------ odds
     def _chance(self, roll: dict) -> int:
-        c = roll["base"]
+        return self._odds(roll)["chance"]
+
+    def _odds(self, roll: dict) -> dict:
+        """The chance, and what built it: the card's base plus each edge you can see on the wheel."""
         h = self.health
-        penalty = 0 if h >= 70 else -5 if h >= 45 else -12 if h >= 20 else -20
+        hurt = 0 if h >= 70 else -5 if h >= 45 else -12 if h >= 20 else -20
+        edges: dict[str, dict] = {}
+
+        def edge(icon: str, label: str, d: int) -> None:
+            if d:
+                e = edges.setdefault(label, {"icon": icon, "label": label, "delta": 0})
+                e["delta"] += d
+
         for m in roll.get("mods", []):
             if m == "combat":
-                c += max([lore.WEAPONS.get(i, 0) for i in self.kit] + [0])
-                c += 10 if self.district == 2 else 0
-                c += 5 * len(self.allies)
-                c += penalty
+                best = max(self.kit, key=lambda i: lore.WEAPONS.get(i, 0), default=None)
+                if best and lore.WEAPONS.get(best, 0):
+                    edge(lore.item_emoji(best), lore.item_name(best), lore.WEAPONS[best])
+                edge("2", "District 2", 10 if self.district == 2 else 0)
+                edge("🤝", "your ally" if len(self.allies) == 1 else "your allies", 5 * len(self.allies))
+                edge("🩸", "your wounds", hurt)
             elif m == "escape":
-                c += 10 if "rope" in self.kit else 0
-                c += 10 if self.district == 5 else 0
-                c += penalty
+                edge(lore.item_emoji("rope"), "rope", 10 if "rope" in self.kit else 0)
+                edge("5", "District 5", 10 if self.district == 5 else 0)
+                edge("🩸", "your wounds", hurt)
             elif m == "stealth":
-                c -= 5 * len(self.allies)
-                c += 15 if self.district == 8 else 0
-                c += penalty
+                edge("🤝", "your ally" if len(self.allies) == 1 else "your allies", -5 * len(self.allies))
+                edge("8", "District 8", 15 if self.district == 8 else 0)
+                edge("🩸", "your wounds", hurt)
             elif m == "forage":
-                c += 30 if self.district == 11 else 0
-                c += 20 if "iodine" in self.kit else 0
+                edge("11", "District 11", 30 if self.district == 11 else 0)
+                edge(lore.item_emoji("iodine"), "iodine", 20 if "iodine" in self.kit else 0)
             elif m == "swim":
-                c += 30 if self.district == 4 else 0
+                edge("4", "District 4", 30 if self.district == 4 else 0)
             elif m == "grab":
-                c += 10 if self.district == 6 else 0
-        return max(5, min(95, c))
+                edge("6", "District 6", 10 if self.district == 6 else 0)
+        out = [e for e in edges.values() if e["delta"]]
+        c = roll["base"] + sum(e["delta"] for e in out)
+        return {"chance": max(5, min(95, c)), "base": roll["base"], "edges": out}
 
     def _dice(self) -> random.Random:
         return _rng(self.salt, self.steps, len(self.log))
 
-    def _roll(self, chance: int) -> bool:
-        return self._dice().randint(1, 100) <= chance
-
-    def _reveal(self, chance: int) -> tuple[int, bool, bool]:
-        """Roll for an option the player chose, and log the roll so the screen can show it."""
+    def _reveal(self, odds: dict, label: str = "", got: str = "", near_counts: bool = True) -> tuple[int, bool, bool]:
+        """Roll for an option the player chose, and log the roll so the wheel can land on it.
+        got: what a near miss still gets you (the bloodbath), shown on the yellow banner.
+        near_counts: False when a near miss changes nothing, so the wheel shows no yellow."""
+        chance = odds["chance"]
         roll = self._dice().randint(1, 100)
         ok = roll <= chance
-        near = not ok and roll <= chance + NEAR
+        near = near_counts and not ok and roll <= chance + NEAR
         self.log.append({"day": self.day, "kind": "roll", "text": f"{chance}% · rolled {roll}",
-                         "chance": chance, "roll": roll, "ok": ok, "near": near})
+                         "chance": chance, "roll": roll, "ok": ok, "near": near, "label": label,
+                         "base": odds["base"], "edges": odds["edges"], "got": got, "near_zone": near_counts})
         return roll, ok, near
+
+    @staticmethod
+    def _flat(chance: int) -> dict:
+        return {"chance": chance, "base": chance, "edges": []}
 
     def _has(self, need: dict | None) -> bool:
         if not need:

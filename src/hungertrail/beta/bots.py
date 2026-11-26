@@ -25,7 +25,8 @@ def random_bot(g: Game, r: random.Random):
 def hider(g: Game, r: random.Random):
     opts = g.options()
     if g.card == SIFT:
-        return opts[-1]["index"]  # leave the rubble, or stop digging
+        v = g.sift_view()
+        return 0 if v["how"] is None and g.supplies >= 1 else SIFT_STOP if v["how"] else opts[-1]["index"]
     for tag in ("hide", "safe"):
         pick = [o for o in opts if o["tag"] == tag]
         if pick:
@@ -46,7 +47,7 @@ def brute(g: Game, r: random.Random):
 
 
 def sifter(g: Game, r: random.Random, greedy: bool = False):
-    """Digs the way a player who reads the ✨ and 🔥 would."""
+    """Digs the way a player who reads the pieces would: finish what's half dug, else open new ground."""
     v = g.sift_view()
     if v["how"] is None:
         return 1 if greedy or g.supplies < 2 else 0
@@ -54,24 +55,36 @@ def sifter(g: Game, r: random.Random, greedy: bool = False):
         return SIFT_STOP
     n = v["size"]
     tiles = v["tiles"]
+    closed = {i for i in range(n * n) if not tiles[i]["open"]}
 
-    def near(i):
+    def fits(cells, sid):
+        return all(c in closed or tiles[c].get("shape") == sid for c in cells)
+
+    def area(i):
         x, y = i % n, i // n
-        return [(y + dy) * n + x + dx for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)) if 0 <= x + dx < n and 0 <= y + dy < n]
+        return [(y + dy) * n + x + dx for dy in (-1, 0, 1) for dx in (-1, 0, 1) if 0 <= x + dx < n and 0 <= y + dy < n]
 
-    def score(i):
-        s = 10 if tiles[i].get("marked") else 0
-        for j in near(i):
-            if tiles[j]["open"]:
-                s += 3 if tiles[j]["glint"] else 0
-                s -= 4 if tiles[j]["scorch"] else 0
-        return s + r.random()
-
-    closed = [i for i in range(n * n) if not tiles[i]["open"]]
-    best = max(closed, key=score)
-    risky = any(tiles[j]["open"] and tiles[j]["scorch"] for j in near(best) + [best])
-    big = greedy or (not risky and g.health >= 50)
-    return (SIFT_BIG if big else SIFT_SMALL) + best
+    # 1. Finish a treasure you've found a piece of: count where its rectangle could still lie.
+    for t in v["legend"]:
+        if t["trap"] or t["done"] or not t["found"]:
+            continue
+        seen = [i for i in range(n * n) if tiles[i].get("shape") == t["shape"]]
+        votes: dict[int, int] = {}
+        for w, h in {(t["w"], t["h"]), (t["h"], t["w"])}:
+            for y in range(n - h + 1):
+                for x in range(n - w + 1):
+                    cells = [(y + dy) * n + x + dx for dy in range(h) for dx in range(w)]
+                    if all(c in cells for c in seen) and fits(cells, t["shape"]):
+                        for c in cells:
+                            if c in closed:
+                                votes[c] = votes.get(c, 0) + 1
+        if votes:
+            best = max(votes, key=lambda c: (votes[c], r.random()))
+            left = t["w"] * t["h"] - t["found"]
+            return (SIFT_BIG if left >= 4 and v["digs"] > 0 else SIFT_SMALL) + best
+    # 2. Open new ground where a big dig turns the most closed tiles.
+    best = max(closed, key=lambda i: (sum(c in closed for c in area(i)), r.random()))
+    return SIFT_BIG + best
 
 
 def smart(g: Game, r: random.Random):

@@ -193,24 +193,31 @@ def test_hide_is_fair():
 
 
 def test_sift_at_the_horn():
+    """The Crystal Sphere: treasures cover several tiles and are yours only once fully uncovered."""
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
     g.arena.offers[2] = ["stream", "horn", "open"]
     g.supplies = 3
+    g.kit = []
     horn = next(o for o in g.options() if o["place"] == "horn")
     g.choose(horn["index"])
-    assert g.card == SIFT and [o["label"] for o in g.options()] == ["Dig quietly", "Dig loudly", "Leave the rubble"]
+    assert g.card == SIFT and [o["label"] for o in g.options()] == ["Dig quietly", "Dig loudly"]
     g.choose(0)
-    assert g.supplies == 2 and g.sift["digs"] == 3
+    assert g.supplies == 2 and g.sift["digs"] == 4
     view = g.sift_view()
-    assert len(view["tiles"]) == 25 and not any(t["open"] for t in view["tiles"])
-    assert "item:" not in str(view) and "career" not in str(view)  # nothing under the rubble leaks
-    tiles = g.sift["tiles"]
-    food = tiles.index("food")
-    g.choose(SIFT_SMALL + food)
-    assert g.supplies == 3 and g.sift_view()["tiles"][food]["emoji"] == "🥫"
-    g.choose(SIFT_BIG + 12 if 12 != food else SIFT_BIG + 0)
-    if not g.over and g.card == SIFT:
+    assert len(view["tiles"]) == 81 and not any(t["open"] for t in view["tiles"])
+    assert "cells" not in str(view) and "career" not in str(view)  # nothing under the rubble leaks
+    assert any(t["name"].startswith("a crate") and (t["w"], t["h"]) == (3, 3) for t in view["legend"])
+    crate = next(s for s in g.sift["shapes"] if s["kind"] == "crate")
+    corner, middle = crate["cells"][0], crate["cells"][4]
+    g.choose(SIFT_SMALL + corner)  # one piece: not yours yet, and its edges show it's a corner
+    piece = g.sift_view()["tiles"][corner]
+    assert piece["open"] and not piece["done"] and set(piece["edge"]) == {"t", "l"}
+    assert crate["item"] not in g.kit
+    g.choose(SIFT_BIG + middle)  # the 3x3 on its middle opens the rest of it
+    assert crate["done"] and crate["item"] in g.kit
+    assert g.sift["digs"] == 2
+    while not g.over and g.card == SIFT:
         g.choose(SIFT_STOP)
     assert g.over or g.card != SIFT
 

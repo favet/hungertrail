@@ -18,7 +18,7 @@ from . import lore
 from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
-VERSION = "b3"  # b3: minigames replay from inputs, so b2 runs can't be replayed
+VERSION = "b4"  # b4: the wheel, the Crystal Sphere sift, a night marker in the log
 
 
 def _mac(settings: Settings, body: bytes) -> str:

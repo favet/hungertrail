@@ -154,6 +154,7 @@ function enterGame(v) {
   view = v;
   shown = 0;
   blocks = {};
+  scene = null;
   lastStatus = null;
   $("#slotpop").hidden = true;
   $("#log").replaceChildren();
@@ -263,59 +264,178 @@ function hornScene(layout) {
   }
 }
 
-function render(first = false) {
-  const v = view;
-  $("#status").replaceChildren(...statusBar(v.status));
-  const fresh = v.log.slice(shown);
-  let delay = 0;
-  let tone = null;
-  for (const entry of fresh) {
-    const b = dayBlock(entry.day);
-    let node;
-    if (entry.kind === "roll") {
-      // The reveal: the roll against the odds, big and coloured, right under your choice.
-      tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
-      let head = entry.ok ? "✓ MADE IT" : entry.near ? "✗ SO CLOSE" : "✗ MISSED";
-      let note = entry.near ? `${entry.chance}% · half damage` : `${entry.chance}%`;
-      if (entry.game) {
-        head = (entry.ok ? "✓ " : entry.near ? "" : "✗ ") + entry.label;
-        note = `${Games.ICON[entry.game] || "⛏️"} ${entry.note}`;
-      }
-      node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: note }));
-      if (!first && navigator.vibrate) setTimeout(() => navigator.vibrate(entry.ok ? 15 : [30, 40, 30]), delay);
-    } else {
-      const text = entry.kind === "choice" ? "> " + entry.text : entry.text;
-      node = el("p", { class: "entry " + entry.kind, text });
-    }
-    if (entry.kind === "choice") { tone = null; b.choices.push(entry.text); updateSummary(entry.day); }
-    if (entry.kind === "delta") {
-      const gain = /[+]/.test(entry.text) && !/−/.test(entry.text);
-      const loss = /−/.test(entry.text) && !/[+]/.test(entry.text);
-      node.classList.add(gain ? "gain" : loss ? "loss" : "mixed");
-      if (tone) node.classList.add("after-" + tone);
-      tone = null;
-      b.deltas.push(entry.text); updateSummary(entry.day);
-    }
-    if (!first) {
-      node.style.animationDelay = delay + "ms";
-      delay += entry.kind === "choice" ? 50 : entry.kind === "roll" ? 140 : entry.kind === "delta" ? 110 : 200;
-      if (entry.kind === "cannon" || entry.kind === "death") setTimeout(() => { Sound.boom(); document.body.classList.add("shake"); setTimeout(() => document.body.classList.remove("shake"), 500); }, delay);
-    } else node.classList.add("instant");
-    b.body.append(node);
-  }
-  shown = v.log.length;
-  if (v.layout) hornScene(v.layout);
-  const log = $("#log");
-  const scroll = () => log.scrollTo({ top: log.scrollHeight, behavior: first ? "auto" : "smooth" });
-  scroll();
-  if (!first) setTimeout(scroll, delay + 350);
+// ------------------------------------------------------------------ scenes
+// One scene at a time: an event, your choice, the wheel, the result. Then "Continue" folds the scene
+// to one line and the next one starts at the top of the screen. Past days fold to one line each.
+const BREAKS = new Set(["event", "day", "night"]);
+const SOFT = new Set(["round"]);  // a new exchange in the final fight: a fresh scene, no Continue
+const HIDDEN = new Set(["day", "system"]);  // the day header and status bar already say these
+let scene = null;  // { node, entries }
+let renderGen = 0;
+let hurry = false;
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const visible = (page) => page.some((e) => e.kind !== "choice" && !HIDDEN.has(e.kind));
+
+function paginate(entries) {
+  const pages = [[]];
+  for (const e of entries) {
+    if (BREAKS.has(e.kind) && pages[pages.length - 1].length) pages.push([]);
+    pages[pages.length - 1].push(e);
+  }
+  return pages;
+}
+
+function entryNode(entry) {
+  let node;
+  if (entry.kind === "roll") {
+    const tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
+    let head = entry.ok ? "MADE IT" : entry.near ? (entry.got ? "GOT IT, BUT CUT" : "CLOSE CALL") : "MISSED";
+    let note = entry.chance + "%" + (entry.near ? " · half damage" : "");
+    if (entry.game) {
+      head = entry.label;
+      note = entry.note;
+    }
+    node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: note }));
+  } else {
+    node = el("p", { class: "entry " + entry.kind, text: entry.kind === "choice" ? "> " + entry.text : entry.text });
+  }
+  if (entry.kind === "delta") {
+    const gain = /[+]/.test(entry.text) && !/−/.test(entry.text);
+    const loss = /−/.test(entry.text) && !/[+]/.test(entry.text);
+    node.classList.add(gain ? "gain" : loss ? "loss" : "mixed");
+  }
+  return node;
+}
+
+// A finished scene folds to one line: what you did and what it cost.
+function foldScene(sc) {
+  if (!sc || sc.node.classList.contains("past")) return;
+  const bits = [];
+  for (const e of sc.entries) {
+    if (e.kind === "choice") bits.push(e.text);
+    else if (e.kind === "roll") bits.push(e.game ? e.label : e.ok ? "made it" : e.near ? "close call" : "missed");
+    else if (e.kind === "delta") bits.push(e.text);
+  }
+  if (!bits.length) {
+    const first = sc.entries.find((e) => !HIDDEN.has(e.kind));
+    if (!first) { sc.node.remove(); return; }
+    bits.push(first.kind === "night" ? "Night" : first.text.length > 70 ? first.text.slice(0, 68) + "…" : first.text);
+  }
+  const sum = el("p", { class: "scenesum", text: bits.join(" · "), onclick: () => sc.node.classList.toggle("open") });
+  sc.node.prepend(sum);
+  sc.node.classList.add("past");
+}
+
+function newScene(day) {
+  foldScene(scene);
+  const node = el("div", { class: "sceneblk" });
+  dayBlock(day).body.append(node);
+  scene = { node, entries: [], day };
+  return scene;
+}
+
+function scrollToScene() {
+  const log = $("#log");
+  if (!scene) return;
+  const top = scene.node.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 6;
+  log.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+// A gain or loss lands on the status bar the moment its line appears, not at the end of the turn.
+function applyDelta(text) {
+  if (!lastStatus) return;
+  const num = (re) => { const m = text.match(re); return m ? (m[1] === "+" ? 1 : -1) * +m[2] : 0; };
+  const dh = num(/❤️\s*([+−-])(\d+)/), ds = num(/🎒\s*([+−-])(\d+)/);
+  if (!dh && !ds) return;
+  const s = { ...lastStatus, health: Math.max(0, lastStatus.health + dh), supplies: Math.max(0, lastStatus.supplies + ds) };
+  $("#status").replaceChildren(...statusBar(s));
+}
+
+function noteEntry(entry, first) {
+  const b = dayBlock(entry.day);
+  if (entry.kind === "delta" && !first) applyDelta(entry.text);
+  if (entry.kind === "choice") { b.choices.push(entry.text); updateSummary(entry.day); }
+  if (entry.kind === "delta") { b.deltas.push(entry.text); updateSummary(entry.day); }
+  if (entry.kind === "cannon" || entry.kind === "death") {
+    Sound.boom();
+    document.body.classList.add("shake");
+    setTimeout(() => document.body.classList.remove("shake"), 500);
+  }
+}
+
+// Wait for the player to tap Continue before the next scene.
+function continueTap(gen) {
+  return new Promise((done) => {
+    const box = $("#options");
+    box.className = "";
+    const go = () => { document.removeEventListener("keydown", key); if (gen === renderGen) done(); };
+    const key = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+    box.replaceChildren(el("button", { class: "big primary continue appear", text: "Continue", onclick: go }));
+    document.addEventListener("keydown", key);
+  });
+}
+
+async function revealPage(page, gen, first) {
+  hurry = false;
+  let shownOne = false;
+  for (const entry of page) {
+    if (gen !== renderGen) return;
+    if (!scene || BREAKS.has(entry.kind) || SOFT.has(entry.kind) || scene.day !== entry.day) {
+      if (SOFT.has(entry.kind) && !first && !hurry) await sleep(900);
+      newScene(entry.day);
+      if (!first) scrollToScene();
+    }
+    if (!first && entry.kind === "roll" && !entry.game) await Wheel.spin(entry, hurry);
+    else if (!first && shownOne && !HIDDEN.has(entry.kind) && !hurry) await sleep(entry.kind === "delta" ? 260 : 420);
+    const node = entryNode(entry);
+    if (first) node.classList.add("instant");
+    scene.node.append(node);
+    scene.entries.push(entry);
+    noteEntry(entry, first);
+    if (!HIDDEN.has(entry.kind)) shownOne = true;
+    if (!first) node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+async function render(first = false) {
+  const gen = ++renderGen;
+  const v = view;
+  const fresh = v.log.slice(shown);
+  shown = v.log.length;
+  const pages = paginate(fresh);
+  if (first) {
+    $("#status").replaceChildren(...statusBar(v.status));
+    for (const page of pages) await revealPage(page, gen, true);
+    if (v.layout) hornScene(v.layout);
+    $("#log").scrollTo({ top: $("#log").scrollHeight });
+    scrollToScene();
+    showOptions(v);
+    return;
+  }
+  $("#options").replaceChildren();
+  for (let p = 0; p < pages.length; p++) {
+    if (p > 0 && visible(pages[p - 1])) await continueTap(gen);
+    if (gen !== renderGen) return;
+    // The status bar shows where the run ends up, so it changes with the last scene, not before.
+    if (p === pages.length - 1 && p > 0) $("#status").replaceChildren(...statusBar(v.status));
+    await revealPage(pages[p], gen, false);
+  }
+  if (gen !== renderGen) return;
+  if (pages.length <= 1) $("#status").replaceChildren(...statusBar(v.status));
+  if (v.layout) hornScene(v.layout);
+  showOptions(v);
+}
+
+function showOptions(v) {
   const box = $("#options");
   box.replaceChildren();
+  box.className = "";
   box.classList.toggle("draft", v.card === "draft");
   box.classList.toggle("sifting", !!v.sift);
+  const delay = 80;
   if (v.over) {
-    box.append(el("button", { class: "big primary appear", style: `animation-delay:${delay + 300}ms`, text: v.result.won ? "Claim your crown" : "See how you did", onclick: () => showResults(v) }));
+    box.append(el("button", { class: "big primary appear", style: `animation-delay:${delay}ms`, text: v.result.won ? "Claim your crown" : "See how you did", onclick: () => showResults(v) }));
     return;
   }
   if (v.sift) box.append(siftGrid(v.sift, v.options, delay));
@@ -324,61 +444,88 @@ function render(first = false) {
     box.append(el("p", { class: "legend appear", style: `animation-delay:${delay + 300}ms` },
       el("span", { class: "lose", text: "✗" }), " what a miss costs  ☠️ could kill you"));
   }
-  animating = delay > 0 ? setTimeout(() => (animating = 0), delay + 400) : 0;
 }
 
-// A tap on the story while it's still appearing shows it all at once.
-let animating = 0;
-function skipAnimation() {
-  if (!animating) return;
-  clearTimeout(animating);
-  animating = 0;
-  $$("#log .entry, #options .appear").forEach((n) => (n.style.animationDelay = "0ms"));
-  const log = $("#log");
-  log.scrollTo({ top: log.scrollHeight });
-}
+// A tap on the story while it's still appearing shows the rest of the scene at once.
+function skipAnimation() { hurry = true; }
 
-// The sift: a 5x5 grid of rubble. Tap a tile to dig it; "Dig wide" turns a cross of five.
-let wide = false;
+// The sift, after Slay the Spire's Crystal Sphere: treasures cover several tiles, and one is yours
+// only once every tile of it is open. A small dig opens one tile; a big dig opens a 3x3.
+let bigDig = false;
+let aim = null;
 function siftGrid(sf, options, delay) {
   const wrap = el("div", { class: "sift appear", style: `animation-delay:${delay}ms` });
   const digging = sf.how != null;
+  const n = sf.size;
   const byTile = {};
   for (const o of options) if (o.dig != null) (byTile[o.dig] = byTile[o.dig] || {})[o.big ? "big" : "small"] = o;
-  const grid = el("div", { class: "siftgrid" + (digging ? "" : " idle") });
-  const cross = (i) => {
-    const n = sf.size, x = i % n, y = Math.floor(i / n);
-    const near = [[0, -1], [-1, 0], [1, 0], [0, 1]].filter(([dx, dy]) => x + dx >= 0 && x + dx < n && y + dy >= 0 && y + dy < n);
-    return [i, ...near.map(([dx, dy]) => (y + dy) * n + x + dx)];
+  const grid = el("div", { class: "siftgrid" + (digging ? "" : " idle"), style: `grid-template-columns:repeat(${n},1fr)` });
+  const area = (i) => {
+    const x = i % n, y = Math.floor(i / n), out = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      if (x + dx >= 0 && x + dx < n && y + dy >= 0 && y + dy < n) out.push((y + dy) * n + x + dx);
+    return out;
+  };
+  const showAim = (i) => {
+    grid.querySelectorAll(".tile.aim").forEach((c) => c.classList.remove("aim"));
+    if (i == null) return;
+    (bigDig ? area(i) : [i]).forEach((j) => grid.children[j].classList.add("aim"));
   };
   sf.tiles.forEach((t, i) => {
-    const cell = el("button", { class: "tile" + (t.open ? " open" : "") + (t.marked ? " marked" : ""), "data-i": i });
+    const cell = el("button", { class: "tile", "data-i": i });
     if (t.open) {
-      cell.append(el("span", { class: "what", text: t.emoji }));
-      if (t.glint) cell.append(el("span", { class: "tell glint", text: "✨" }));
-      if (t.scorch) cell.append(el("span", { class: "tell scorch", text: "🔥" }));
+      cell.classList.add("open");
       cell.disabled = true;
+      if (t.shape != null) {
+        cell.classList.add(t.trap ? "trap" : t.done ? "done" : "piece");
+        for (const side of t.edge) cell.classList.add("e" + side);
+        cell.append(el("span", { class: "what", text: t.icon }));
+      }
     } else {
-      if (t.marked) cell.append(el("span", { class: "tell glint", text: "✨" }));
       cell.disabled = !digging;
       cell.onclick = () => {
-        const o = byTile[i] && byTile[i][wide ? "big" : "small"];
-        if (o) pickOption(o);
+        const o = byTile[i] && byTile[i][bigDig ? "big" : "small"];
+        if (!o) return;
+        // A big dig takes two taps: one to aim, one to dig. On a phone there's no hover to preview it.
+        if (bigDig && aim !== i) { aim = i; showAim(i); hint.textContent = "Tap the same tile again to dig."; return; }
+        aim = null;
+        pickOption(o);
       };
-      cell.onpointerenter = () => { if (wide && digging) cross(i).forEach((j) => grid.children[j].classList.add("aim")); };
-      cell.onpointerleave = () => grid.querySelectorAll(".tile.aim").forEach((c) => c.classList.remove("aim"));
+      cell.onpointerenter = (e) => { if (digging && e.pointerType === "mouse") showAim(i); };
+      cell.onpointerleave = (e) => { if (e.pointerType === "mouse") showAim(aim); };
     }
     grid.append(cell);
   });
-  wrap.append(grid);
+  const hint = el("p", { class: "dim small sifthint", text: digging ? "Tap a tile to dig it." : "" });
+  if (digging) wrap.append(grid);  // before you choose how to dig, just what's buried
   if (digging) {
-    const small = el("button", { class: "mode" + (wide ? "" : " on"), text: "⛏️ Dig one" });
-    const big = el("button", { class: "mode" + (wide ? " on" : ""), text: "⛏️ Dig wide: five" });
-    small.onclick = () => { wide = false; small.classList.add("on"); big.classList.remove("on"); };
-    big.onclick = () => { wide = true; big.classList.add("on"); small.classList.remove("on"); };
+    const small = el("button", { class: "mode" + (bigDig ? "" : " on"), text: "Small dig: 1 tile" });
+    const big = el("button", { class: "mode" + (bigDig ? " on" : ""), text: "Big dig: 3×3" });
+    const set = (b) => {
+      bigDig = b; aim = null; showAim(null);
+      small.classList.toggle("on", !b); big.classList.toggle("on", b);
+      hint.textContent = b ? "Tap a tile to aim, then tap it again to dig." : "Tap a tile to dig it.";
+    };
+    small.onclick = () => set(false);
+    big.onclick = () => set(true);
     wrap.append(el("div", { class: "siftbar" },
-      el("span", { class: "digs", text: `${sf.digs} dig${sf.digs === 1 ? "" : "s"} left` }), small, big));
-  } else wide = false;
+      el("span", { class: "digs", text: `${sf.digs} dig${sf.digs === 1 ? "" : "s"} left` }), small, big), hint);
+  } else { bigDig = false; aim = null; }
+  // What's buried, and its size. A treasure is yours once every tile of it is open.
+  const legend = el("div", { class: "siftlegend" });
+  if (!digging) legend.append(el("span", { class: "lghead", text: "Buried here. A find is yours once every tile of it is dug out." }));
+  const groups = [];
+  for (const t of sf.legend) {
+    const name = t.name.replace(/^an? /, "").replace(/: .*/, "").replace(/^crate with a (.*)/, "$1 in a crate");
+    const g = groups.find((x) => x.name === name && x.trap === t.trap);
+    if (g) { g.n++; g.done += t.done; g.found = g.found || t.found; } else groups.push({ ...t, name, n: 1, done: +t.done });
+  }
+  for (const t of groups) {
+    const state = t.trap ? (t.done ? "went off" : "") : t.done ? (t.n > 1 ? `${t.done} yours` : "yours") : t.found && t.n === 1 ? `${t.found}/${t.w * t.h}` : "";
+    legend.append(el("span", { class: "lg" + (t.trap ? " trap" : "") + (t.done ? " done" : "") },
+      `${t.icon} ${t.name}${t.n > 1 ? " ×" + t.n : ""} `, el("i", { text: `${t.w}×${t.h}` }), state ? el("b", { text: " " + state }) : null));
+  }
+  wrap.append(legend);
   return wrap;
 }
 
@@ -421,6 +568,7 @@ async function pickOption(o) {
     const ctx = { opponent: f ? f.name : "", nemesis: view.nemesis, foe: f && f.boss ? "🥷" : "🧍" };
     return Games.play(o.minigame, (inputs) => send(o.index, inputs), ctx);
   }
+  if (o.wheel && o.chance != null) return Wheel.open(o, () => send(o.index, null));
   send(o.index, null);
 }
 
@@ -431,8 +579,9 @@ async function send(index, param) {
     const v = await api("/run/choose", { token: view.token, index, param });
     view = v;
     save(v);
-    render();
+    await render();
   } catch (e) {
+    Wheel.close();
     toast(e.message);
     $$("#options button").forEach((b) => (b.disabled = false));
   }
@@ -440,7 +589,7 @@ async function send(index, param) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (Games.active() || $("#game").hidden || !view || e.target.tagName === "INPUT") return;
+  if (busy || Games.active() || $("#game").hidden || !view || e.target.tagName === "INPUT") return;
   const opts = view.options.filter((o) => o.dig == null);
   const n = parseInt(e.key, 10);
   if (n >= 1 && n <= opts.length) pickOption(opts[n - 1]);
