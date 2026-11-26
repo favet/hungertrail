@@ -34,10 +34,16 @@ On Windows, set `PYTHONIOENCODING=utf-8` before running scripts that print emoji
 ## Balance
 
 Beta: `uv run python -m hungertrail.beta.bots` (add `--districts` for win rate per district).
-Beta targets for now: smart about 30%, random about 10-15%, hider under 5%, and no single place
-much better than the smart bot. `DAMAGE`, `DUEL_BASE`, `OPEN_GIFT` and `HORN_LOOT` in
-`beta/engine.py` are the main dials. Beta event cards need a `place`; the header of
-`beta/cards.yaml` documents the schema.
+Bots play the minigames with a skill (`SKILL` in `beta/bots.py`: smart 0.65, casual 0.4). Beta
+targets: a good player (smart) about 40%, casual about 25%, random about 10-15%, hider under 5%,
+and no single place much better than the smart bot. `DAMAGE`, `HIT_CAP`, `FIGHT`,
+`OPPONENT_HEALTH` and `OPEN_GIFT` in `beta/engine.py` are the main dials; the games' own numbers
+are in `beta/minigames.py`. Beta event cards need a `place`; the header of `beta/cards.yaml`
+documents the schema. An option with `minigame: hide` is played, not rolled.
+
+Beta minigames are replayed: the browser sends input ticks, the server reruns the same integer
+simulation. `beta/minigames.py` and `static/beta/minigames.js` must stay in step
+(`test_python_and_browser_minigames_agree` runs node to compare them).
 
 After changing odds, damage or content, run the bots. Current targets: smart bot wins about 15-20%,
 random about 10%, the pure hider under 1%, about 10-16 decisions per run. `DAMAGE` in `engine.py`

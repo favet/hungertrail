@@ -46,7 +46,8 @@
         <li><b>Every choice shows its stakes:</b> the odds, <span class="win">✓</span> what you get if it works, <span class="lose">✗</span> what it costs if it doesn't. <span class="lose">☠️</span> means it could kill you.</li>
         <li><b>The edge of the arena is quiet.</b> Stay there too long and the Gamemakers come for you. From day 6 it's gone.</li>
         <li><b>One Career is the Capitol's favorite killer.</b> Same one for everyone today. You'll meet.</li>
-        <li><b>The final duel</b> is best of three. Your kit, health and kills set the odds.</li>
+        <li><b>Some things you play, not roll:</b> 🎣 fishing at the stream, 🏹 hunting on the ridge, ⛏️ digging through the rubble at the horn, 🤫 holding still when someone comes looking.</li>
+        <li><b>The final fight</b> runs on health, yours and theirs. Watch which side they wind up on, block it, then strike. Your weapon makes the strike longer.</li>
       </ul>
       <p>One ranked run a day. Practice as much as you like.</p>
       <button class="big back">Back</button>
@@ -72,14 +73,8 @@
       <div id="options"></div>
     </section>
 
-    <section id="hunt" class="overlay" hidden>
-      <div class="hunt-box">
-        <p class="hunt-title">HUNTING</p>
-        <p class="dim small">Shoot when the arrow is over the animal. Three shots.</p>
-        <div class="track"><div class="zone"></div><div class="marker"></div></div>
-        <p class="hunt-shots"></p>
-        <button id="btn-shoot" class="big primary">Shoot</button>
-      </div>
+    <section id="mg" class="overlay" hidden>
+      <div class="hunt-box mg-box"></div>
     </section>
 
     <section id="results" class="screen" hidden>
@@ -113,6 +108,8 @@
 
   <script id="config" type="application/json">{{ config | tojson }}</script>
   <script src="{{ url_for('static', path='art.js') }}?v={{ v }}"></script>
+  <script src="{{ url_for('static', path='beta/minigames.js') }}?v={{ v }}"></script>
+  <script src="{{ url_for('static', path='beta/games.js') }}?v={{ v }}"></script>
   <script src="{{ url_for('static', path='beta/beta.js') }}?v={{ v }}"></script>
 </body>
 </html>

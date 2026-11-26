@@ -145,6 +145,7 @@ def view(settings: Settings, token: str, game: Game, p: dict) -> dict:
         "card": game.card,
         "options": game.options(),
         "sift": game.sift_view(),
+        "nemesis": game.nemesis_name[0].upper() + game.nemesis_name[1:],
         "over": game.over,
         "result": result(settings, game, p),
     }

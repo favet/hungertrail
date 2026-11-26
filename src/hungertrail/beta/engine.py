@@ -795,9 +795,9 @@ class Game:
         return None
 
     # ------------------------------------------------------------------ minigames
-    def _played(self, game: str, ok: bool, label: str, note: str) -> None:
-        """Log a minigame's result where the roll reveal goes."""
-        self.log.append({"day": self.day, "kind": "roll", "game": game, "ok": ok, "near": False,
+    def _played(self, game: str, ok: bool, label: str, note: str, near: bool = False) -> None:
+        """Log a minigame's result where the roll reveal goes. near shows it amber: no harm done."""
+        self.log.append({"day": self.day, "kind": "roll", "game": game, "ok": ok, "near": near,
                          "label": label, "note": note, "chance": None, "text": f"{label} · {note}"})
 
     def _fish_params(self) -> dict:
@@ -862,7 +862,7 @@ class Game:
                 continue
             out.append(self._opt(SIFT_SMALL + i, "Dig here", "", None, "safe", [], [], dig=i, big=False))
             out.append(self._opt(SIFT_BIG + i, "Dig wide here", "", None, "bold", [], [], dig=i, big=True))
-        out.append(self._opt(SIFT_STOP, "Stop digging", f"{sf['digs']} dig{'s' if sf['digs'] != 1 else ''} left.", None, "safe", [], []))
+        out.append(self._opt(SIFT_STOP, "Stop digging", "Keep what you've found and get clear.", None, "safe", [], []))
         return out
 
     def sift_view(self) -> dict | None:
@@ -934,9 +934,10 @@ class Game:
                 if self.over:
                     return ()
                 ended = ended or what == "career"
-        good = [f for f in found if f not in ("🪤", "💥", "👁️", "🔮")]
-        self._played("sift", bool(good) and not ended, " ".join(found) if found else "NOTHING",
-                      "dig wide" if big else "dig")
+        hurt = any(f in ("🪤", "💥", "👁️") for f in found)
+        # Green for a find, red for a trap, amber for plain dirt.
+        self._played("sift", bool(found) and not hurt, " ".join(found) if found else "EMPTY",
+                     ("dig wide" if big else "dig") + ("" if found else " · just dirt"), near=not found)
         if ended:
             self._say("You tear free and run. The digging is over.", "result")
             return self._end_sift()
@@ -1305,7 +1306,8 @@ class Game:
             "remaining": self.remaining,
             "allies": list(self.allies),
             "can_use": "medkit" if self.can_use_medkit() else None,
-            "fight": {"them": self.opp_health, "max": self.opp_max, "name": self.opponent} if self.card == DUEL else None,
+            "fight": {"them": self.opp_health, "max": self.opp_max, "name": self.opponent,
+                      "boss": self.opponent_id == self.nemesis} if self.card == DUEL else None,
         }
 
     def emoji_row(self) -> str:

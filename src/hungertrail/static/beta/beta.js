@@ -205,11 +205,22 @@ function statusBar(s) {
   }
   lastStatus = s;
   const who = [s.kills ? `⚔️ ${s.kills}` : "", s.allies.length ? "🤝 " + s.allies.join(", ") : ""].filter(Boolean).join(" · ");
-  const duel = s.duel ? ` · Duel ${s.duel[0]}–${s.duel[1]}` : "";
+  let whoEl = el("span", { class: "who", text: who });
+  if (s.fight) {
+    // The final fight: their health, next to yours.
+    const fb = el("span", { class: "hbar foebar" });
+    const was = prev && prev.fight ? prev.fight.them : s.fight.them;
+    const w = (n) => (n / s.fight.max) * 100 + "%";
+    if (s.fight.them < was) fb.append(el("i", { class: "ghost", style: `width:${w(was)}` }));
+    fb.append(el("i", { class: "fill", style: `width:${w(s.fight.them)}` }));
+    if (s.fight.them < was) requestAnimationFrame(() => setTimeout(() => { const g = fb.querySelector(".ghost"); if (g) g.style.width = w(s.fight.them); }, 450));
+    whoEl = el("span", { class: "who foe" + (s.fight.them < was ? " pulse down" : "") },
+      `${s.fight.name.split(" (")[0]} ❤️ `, el("b", { text: s.fight.them }), fb);
+  }
   return [
     el("div", { class: "row1" },
-      el("span", { class: "when", text: `Day ${s.day} · ${s.remaining} left${duel}` }),
-      el("span", { class: "who", text: who }),
+      el("span", { class: "when", text: s.fight ? `Day ${s.day} · Final fight` : `Day ${s.day} · ${s.remaining} left` }),
+      whoEl,
       el("button", { class: "mute", title: "Sound", text: Sound.on() ? "🔊" : "🔇", onclick: (e) => { Sound.toggle(); e.target.textContent = Sound.on() ? "🔊" : "🔇"; } })),
     el("div", { class: "row2" }, hp, food, el("span", { class: "kit" }, ...slots)),
   ];
@@ -264,8 +275,12 @@ function render(first = false) {
     if (entry.kind === "roll") {
       // The reveal: the roll against the odds, big and coloured, right under your choice.
       tone = entry.ok ? "ok" : entry.near ? "near" : "bad";
-      const head = entry.ok ? "✓ MADE IT" : entry.near ? "✗ SO CLOSE" : "✗ MISSED";
-      const note = entry.near ? `${entry.chance}% · half damage` : `${entry.chance}%`;
+      let head = entry.ok ? "✓ MADE IT" : entry.near ? "✗ SO CLOSE" : "✗ MISSED";
+      let note = entry.near ? `${entry.chance}% · half damage` : `${entry.chance}%`;
+      if (entry.game) {
+        head = (entry.ok ? "✓ " : entry.near ? "" : "✗ ") + entry.label;
+        note = `${Games.ICON[entry.game] || "⛏️"} ${entry.note}`;
+      }
       node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: note }));
       if (!first && navigator.vibrate) setTimeout(() => navigator.vibrate(entry.ok ? 15 : [30, 40, 30]), delay);
     } else {
@@ -298,11 +313,13 @@ function render(first = false) {
   const box = $("#options");
   box.replaceChildren();
   box.classList.toggle("draft", v.card === "draft");
+  box.classList.toggle("sifting", !!v.sift);
   if (v.over) {
     box.append(el("button", { class: "big primary appear", style: `animation-delay:${delay + 300}ms`, text: v.result.won ? "Claim your crown" : "See how you did", onclick: () => showResults(v) }));
     return;
   }
-  v.options.forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
+  if (v.sift) box.append(siftGrid(v.sift, v.options, delay));
+  v.options.filter((o) => o.dig == null).forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
   if (v.card === "draft" && v.status.day === 1 && !v.log.some((e) => e.kind === "roll")) {
     box.append(el("p", { class: "legend appear", style: `animation-delay:${delay + 300}ms` },
       el("span", { class: "lose", text: "✗" }), " what a miss costs  ☠️ could kill you"));
@@ -321,13 +338,57 @@ function skipAnimation() {
   log.scrollTo({ top: log.scrollHeight });
 }
 
+// The sift: a 5x5 grid of rubble. Tap a tile to dig it; "Dig wide" turns a cross of five.
+let wide = false;
+function siftGrid(sf, options, delay) {
+  const wrap = el("div", { class: "sift appear", style: `animation-delay:${delay}ms` });
+  const digging = sf.how != null;
+  const byTile = {};
+  for (const o of options) if (o.dig != null) (byTile[o.dig] = byTile[o.dig] || {})[o.big ? "big" : "small"] = o;
+  const grid = el("div", { class: "siftgrid" + (digging ? "" : " idle") });
+  const cross = (i) => {
+    const n = sf.size, x = i % n, y = Math.floor(i / n);
+    const near = [[0, -1], [-1, 0], [1, 0], [0, 1]].filter(([dx, dy]) => x + dx >= 0 && x + dx < n && y + dy >= 0 && y + dy < n);
+    return [i, ...near.map(([dx, dy]) => (y + dy) * n + x + dx)];
+  };
+  sf.tiles.forEach((t, i) => {
+    const cell = el("button", { class: "tile" + (t.open ? " open" : "") + (t.marked ? " marked" : ""), "data-i": i });
+    if (t.open) {
+      cell.append(el("span", { class: "what", text: t.emoji }));
+      if (t.glint) cell.append(el("span", { class: "tell glint", text: "✨" }));
+      if (t.scorch) cell.append(el("span", { class: "tell scorch", text: "🔥" }));
+      cell.disabled = true;
+    } else {
+      if (t.marked) cell.append(el("span", { class: "tell glint", text: "✨" }));
+      cell.disabled = !digging;
+      cell.onclick = () => {
+        const o = byTile[i] && byTile[i][wide ? "big" : "small"];
+        if (o) pickOption(o);
+      };
+      cell.onpointerenter = () => { if (wide && digging) cross(i).forEach((j) => grid.children[j].classList.add("aim")); };
+      cell.onpointerleave = () => grid.querySelectorAll(".tile.aim").forEach((c) => c.classList.remove("aim"));
+    }
+    grid.append(cell);
+  });
+  wrap.append(grid);
+  if (digging) {
+    const small = el("button", { class: "mode" + (wide ? "" : " on"), text: "⛏️ Dig one" });
+    const big = el("button", { class: "mode" + (wide ? " on" : ""), text: "⛏️ Dig wide: five" });
+    small.onclick = () => { wide = false; small.classList.add("on"); big.classList.remove("on"); };
+    big.onclick = () => { wide = true; big.classList.add("on"); small.classList.remove("on"); };
+    wrap.append(el("div", { class: "siftbar" },
+      el("span", { class: "digs", text: `${sf.digs} dig${sf.digs === 1 ? "" : "s"} left` }), small, big));
+  } else wide = false;
+  return wrap;
+}
+
 function optionButton(o, i, delay, card) {
   const stakes = el("span", { class: "stakes" });
   if (o.place) {
     // Places show what they're for and what they risk, not odds: the odds come with the event.
     o.win.forEach((w) => stakes.append(el("span", { class: "win", text: w })));
     o.lose.forEach((w) => stakes.append(el("span", { class: "lose" + (w.includes("Gamemakers") ? " deadly" : ""), text: w })));
-  } else if (o.chance != null) {
+  } else if (o.chance != null || (o.minigame && o.lose.length)) {
     stakes.append(el("span", { class: "win", text: "✓ " + (o.win.length ? o.win.join(" ") : "you're fine") }));
     stakes.append(el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + (o.lose.length ? o.lose.join(" ") : "nothing lost") }));
   } else if (o.win.length) {
@@ -349,12 +410,17 @@ function optionButton(o, i, delay, card) {
       el("span", { class: "ltext", text: o.label }),
       hint ? el("small", { class: "hint", text: hint }) : null,
       stakes.childNodes.length ? stakes : null),
-    o.chance != null ? el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" }) : null);
+    o.chance != null ? el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" })
+      : o.minigame ? el("span", { class: "chance game", title: "a minigame", text: Games.ICON[o.minigame.game] }) : null);
 }
 
 async function pickOption(o) {
-  if (busy || !view || view.over) return;
-  if (o.minigame === "hunt") return Hunt.play((hits) => send(o.index, hits));
+  if (busy || !view || view.over || Games.active()) return;
+  if (o.minigame) {
+    const f = view.status.fight;
+    const ctx = { opponent: f ? f.name : "", nemesis: view.nemesis, foe: f && f.boss ? "🥷" : "🧍" };
+    return Games.play(o.minigame, (inputs) => send(o.index, inputs), ctx);
+  }
   send(o.index, null);
 }
 
@@ -374,66 +440,11 @@ async function send(index, param) {
 }
 
 document.addEventListener("keydown", (e) => {
-  if (!$("#hunt").hidden) {
-    if (e.key === " " || e.key === "Enter") { e.preventDefault(); Hunt.shoot(); }
-    return;
-  }
-  if ($("#game").hidden || !view || e.target.tagName === "INPUT") return;
+  if (Games.active() || $("#game").hidden || !view || e.target.tagName === "INPUT") return;
+  const opts = view.options.filter((o) => o.dig == null);
   const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= view.options.length) pickOption(view.options[n - 1]);
+  if (n >= 1 && n <= opts.length) pickOption(opts[n - 1]);
 });
-
-// ------------------------------------------------------------------ hunting minigame
-const Hunt = (() => {
-  let shots = 0, hits = 0, pos = 0, dir = 1, speed = 0.9, zone = [40, 56], raf = 0, last = 0, done = null, locked = false;
-  const track = () => $("#hunt .track");
-  function frame(t) {
-    const dt = last ? Math.min(50, t - last) : 16;
-    last = t;
-    pos += dir * speed * dt / 10;
-    if (pos >= 100) { pos = 100; dir = -1; }
-    if (pos <= 0) { pos = 0; dir = 1; }
-    $("#hunt .marker").style.left = pos + "%";
-    raf = requestAnimationFrame(frame);
-  }
-  function newZone() {
-    const w = 18 - shots * 3;
-    const start = 8 + Math.random() * (84 - w);
-    zone = [start, start + w];
-    const z = $("#hunt .zone");
-    z.style.left = start + "%"; z.style.width = w + "%";
-    z.textContent = ["🐇", "🦃", "🦌"][shots] || "🐇";
-  }
-  function label() {
-    $("#hunt .hunt-shots").textContent = "Shots: " + "➶".repeat(3 - shots).padEnd(3, "·") + "   Hits: " + hits;
-  }
-  function play(cb) {
-    done = cb; shots = 0; hits = 0; pos = 0; dir = 1; speed = 0.9; last = 0; locked = false;
-    $("#hunt").hidden = false;
-    newZone(); label();
-    raf = requestAnimationFrame(frame);
-  }
-  function shoot() {
-    if (locked || shots >= 3) return;
-    const hit = pos >= zone[0] - 1 && pos <= zone[1] + 1;
-    if (hit) hits++;
-    shots++;
-    track().classList.add(hit ? "hit" : "miss");
-    locked = true;
-    label();
-    setTimeout(() => {
-      track().classList.remove("hit", "miss");
-      locked = false;
-      if (shots >= 3) {
-        cancelAnimationFrame(raf);
-        $("#hunt").hidden = true;
-        done(hits);
-      } else { speed += 0.35; newZone(); }
-    }, 450);
-  }
-  $("#btn-shoot").addEventListener("pointerdown", (e) => { e.preventDefault(); shoot(); });
-  return { play, shoot };
-})();
 
 // ------------------------------------------------------------------ results
 function showResults(v) {

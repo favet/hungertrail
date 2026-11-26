@@ -74,7 +74,9 @@ FISH_KINDS = {
 
 def fish_params(r: random.Random, kind: str, bar: int) -> dict:
     duration = 20 * TPS
-    pos = r.randint(3500, 6500)
+    # A leech stays above your bar while it rests, so letting it go means just not reeling.
+    low = bar + 1200 if kind == "leech" else 500
+    pos = max(low, r.randint(3500, 6500))
     path = [[0, pos]]
     t = 0
     while t < duration:
@@ -86,7 +88,7 @@ def fish_params(r: random.Random, kind: str, bar: int) -> dict:
                 pos = _clamp(pos + r.choice((-1, 1)) * r.randint(1500, 4500), 500, 9500)
         elif kind == "leech":
             t += r.randint(50, 90)
-            pos = _clamp(pos + r.choice((-1, 1)) * r.randint(500, 1800), 500, 9500)
+            pos = _clamp(pos + r.choice((-1, 1)) * r.randint(500, 1800), low, 9500)
         else:
             if r.random() < 0.25:
                 t += r.randint(20, 50)

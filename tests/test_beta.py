@@ -175,6 +175,8 @@ def test_fishing_and_hiding_inputs_are_checked():
     with pytest.raises(ValueError):
         mg.clean_toggles(list(range(mg.MAX_INPUTS + 1)), 10_000)
     assert mg.fish_run(p, [])[0] in (True, False)
+    for i in range(100):  # letting a leech go means just not reeling
+        assert not mg.fish_run(mg.fish_params(random.Random(i), "leech", (2200, 3000)[i % 2]), [])[0]
     h = mg.hide_params(random.Random(2), 70, 0, 0, False)
     assert mg.hide_run(h, [])[0] == "spotted"  # never ducking means the light finds you
     assert mg.hide_run(h, [0])[0] == "gasp"  # never breathing means you gasp

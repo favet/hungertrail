@@ -63,6 +63,36 @@ visibly 4% of the time). Rolls weren't shown, so wins and losses didn't land. De
 
 Deferred to beta 2.5: arena themes as rule changes. Beta 3: marks across days, titles.
 
+## Beta 3 (2026-11-26): minigames, replaces beta 2 on beta.hungertrail.com
+
+Playtest of beta 2: runs felt the same, many choices had one obvious answer, and the duel was three
+hidden rolls. Minigames are the fun of the game, so the big moments become things you play. Each
+one runs an integer simulation; the browser sends only what you pressed and when, and the server
+replays it (`beta/minigames.py`, mirrored in `static/beta/minigames.js`; a test keeps them equal).
+Layouts come from the daily seed, so everyone gets the same fish, the same deer and the same
+rubble today. No game relies on sound.
+
+- Fishing (the stream): hold to raise a bar and keep the fish inside it until the line fills.
+  Minnow 🎒+1, trout 🎒+2; a 🪱 leech hurts if you reel it in. District 4 and a spear or trident
+  give a taller bar.
+- Hunting (the ridge, with a bow, spear or trident): two animals on the track. The 🦌 is worth
+  more but bolts at your first miss. Three arrows with a bow, one heavier throw with a spear.
+  District 10 sees a groosling too.
+- Hold still (some event options, marked 🤫): hold to stay down while a searcher's light sweeps.
+  Breath runs out while you hold, so you breathe in the gaps. The nemesis searches slower and
+  wider.
+- The sift (the horn): a 5x5 grid of rubble, dug quietly (3 digs, costs a day of supplies) or
+  loudly (6 digs, Careers hide in it). ✨ means something good next door, 🔥 a trap. A Capitol map
+  marks the items and shows tomorrow's places. Each dig is a choice, so the grid stays secret.
+- The final fight runs on health: yours against theirs (70, the nemesis 100). Each exchange you
+  press or hold; then watch which side they wind up on, block it as the ring closes, and strike in
+  the gap. Feints and faster swings come as it drags on; from exchange 10 every blow counts double.
+- Bots play the minigames with a skill from 0 to 1 (smart 0.65, casual 0.4). Report: smart about
+  40%, casual about 19%, random about 7%, hider under 1%. Human playtests should set the skills.
+
+Not in beta 3: the sprint, the wheel for the remaining rolls, the crowd and sponsor menu, the 3x
+multiplier, the seeded day plan.
+
 ## Design answers
 
 ### 1. What is one run?
