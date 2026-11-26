@@ -270,8 +270,7 @@ class Game:
                     out.append(self._opt(i, o["label"], o.get("hint", "") or "Hold to stay down. Let go to breathe.", None,
                                          o.get("tag", "safe"), win, lose, minigame=self._hide_params(card["id"], o["roll"]["base"])))
                     continue
-                fe = o["fail"].get("effects", {})
-                odds = {**self._odds(o["roll"]), "near": fe.get("health", 0) < 0 and not fe.get("die")}
+                odds = {**self._odds(o["roll"]), "near": self._card_near(o)}
                 out.append(self._opt(i, o["label"], o.get("hint", ""), odds["chance"], o.get("tag", "safe"), win, lose, wheel=odds))
             else:
                 e = o.get("effects", {})
@@ -279,7 +278,7 @@ class Game:
         return out
 
     def can_use_medkit(self) -> bool:
-        return not self.over and "medkit" in self.kit and self.health < 100 and self.card != SWAP
+        return not self.over and "medkit" in self.kit and self.health < 100
 
     def choose(self, index: int, param=None) -> None:
         if self.over:
@@ -324,6 +323,17 @@ class Game:
         self.kit.remove("medkit")
         self.health = min(100, self.health + 40)
         self._say("You clean and bind your wounds. It stings like nothing else.", "result")
+        if self.card == SWAP and self.pending_item:
+            # The medkit's slot is free now: the new thing goes in it.
+            new = self.pending_item
+            self.pending_item = None
+            self._gain(new)
+            self._say(f"That makes room for the {lore.item_name(new)}.", "result")
+            while self.item_queue and self.pending_item is None:
+                self._gain(self.item_queue.pop(0))
+            self._delta(snap)
+            self._advance(self.resume)
+            return
         self._delta(snap)
 
     # ------------------------------------------------------------------ option helpers
@@ -361,6 +371,14 @@ class Game:
             out.append("☠️")
         return out
 
+    def _near_ok(self, dmg: int) -> bool:
+        """A close call halves the damage. It only counts when half the damage leaves you standing."""
+        return 0 < dmg and dmg // 2 < self.health
+
+    def _card_near(self, opt: dict) -> bool:
+        fe = opt["fail"].get("effects", {})
+        return fe.get("health", 0) < 0 and not fe.get("die") and self._near_ok(self._card_damage(fe["health"]))
+
     @staticmethod
     def _card_damage(health_effect: int) -> int:
         return min(HIT_CAP, round(-health_effect * DAMAGE))
@@ -376,13 +394,16 @@ class Game:
             if i in self.taken:
                 continue
             base, dmg, where = RINGS[ring]
-            odds = {**self._odds({"base": base - 15 * self.grabs, "mods": ["escape", "grab"]}), "near": True}
+            odds = {**self._odds({"base": base - 15 * self.grabs, "mods": ["escape", "grab"]}),
+                    "near": self._near_ok(dmg)}
             chance = odds["chance"]
             desc = f"{lore.PACKS[item][2]} days of supplies." if item in lore.PACKS else lore.ITEMS[item][2]
-            lose = [f"❤️−{dmg}"] + (["☠️"] if dmg >= self.health else [])
+            lose = [f"❤️−{dmg}"] + (["☠️"] if dmg >= self.health else []) + ["you run"]
             out.append(self._opt(i, f"Grab the {lore.item_name(item)}", f"{where}. {desc}", chance,
                                  "bold" if ring != "edge" else "safe",
-                                 [f"{lore.item_emoji(item)} {lore.item_name(item)}"], lose, wheel=odds))
+                                 [f"{lore.item_emoji(item)} {lore.item_name(item)}"], lose, wheel=odds,
+                                 ring=ring, where=where, desc=desc, dmg=dmg,
+                                 near_text="you get it, but take half the damage"))
         label = "Run for the trees" if not self.grabs else "Run while you can"
         hint = "You'll arrive with nothing but your life." if not self.grabs else "Take what you have and go."
         out.append(self._opt(len(self.arena.layout), label, hint, None, "hide", [], []))
@@ -403,19 +424,23 @@ class Game:
         self.taken.add(index)
         self.grabs += 1
         name = lore.item_name(item)
-        roll, ok, near = self._reveal(odds, f"Grab the {name}", f"you get the {name}")
+        roll, ok, near = self._reveal(odds, f"Grab the {name}", f"you get the {name}", near_counts=self._near_ok(dmg))
         if ok:
             self._say(self._pick(f"You snatch the {name} and keep moving.", f"The {name} is yours. Nobody touched you."), "result")
             self._take(item)
             return ("draft",) if self.grabs < 2 else ("bloodbath",)
         if near:
-            self._say(f"Close call. You get the {name}, and a blade across the arm for it. You run.", "result")
+            # A close call still gets you the item, and you can still go back for more.
+            self._say(f"Close call. You get the {name}, and a blade across the arm for it.", "result")
             self._take(item)
             self._hurt(dmg // 2, "the bloodbath")
+            if self.over:
+                return ()
+            return ("draft",) if self.grabs < 2 else ("bloodbath",)
         else:
             self._say(self._pick(
-                f"Someone gets to the {name} first. You get a fist, then a knife, and you run.",
-                f"You never reach the {name}. You crawl away bleeding.",
+                f"Someone gets to the {name} first. You get a fist, then a knife. No more grabs: you run.",
+                f"You never reach the {name}. You crawl away bleeding. The horn is done with you.",
             ), "result")
             self._hurt(dmg, "the bloodbath")
         return ("bloodbath",)
@@ -458,6 +483,10 @@ class Game:
             for i, k in enumerate(self.kit)
         ]
         out.append(self._opt(lore.KIT_SLOTS, f"Leave the {lore.item_name(new)}", lore.ITEMS[new][2], None, "safe", [], []))
+        if self.can_use_medkit():
+            heal = min(40, 100 - self.health)
+            out.append(self._opt(USE, f"Use the medkit, then take the {lore.item_name(new)}", "Heal now and make room.",
+                                 None, "safe", [f"❤️+{heal}", f"{lore.item_emoji(new)} {lore.item_name(new)}"], []))
         return out
 
     def _resolve_swap(self, index: int) -> tuple:
@@ -528,9 +557,7 @@ class Game:
             branch = opt["success" if ok else "fail"]
             text, effects = branch.get("text", ""), branch.get("effects", {})
         elif "roll" in opt:
-            fe = opt["fail"].get("effects", {})
-            _, ok, near = self._reveal(self._odds(opt["roll"]), self._fmt(opt["label"]),
-                                       near_counts=fe.get("health", 0) < 0 and not fe.get("die"))
+            _, ok, near = self._reveal(self._odds(opt["roll"]), self._fmt(opt["label"]), near_counts=self._card_near(opt))
             branch = opt["success" if ok else "fail"]
             text, effects = branch.get("text", ""), branch.get("effects", {})
         else:
@@ -1136,12 +1163,20 @@ class Game:
                 article = "some" if item == "iodine" else "an" if item[0] in "aeiou" else "a"
                 self._say(f"You found {article} {lore.item_name(item)}.", "gift")
                 self._gain(item)
-        if e.get("kill"):
-            self._kill(e["kill"])
+        ally = e.get("ally")
+        kills = e.get("kill", 0)
+        if ally == "dies" and kills and self.allies:
+            # You killed your ally: they're the kill, not some stranger.
+            self.pool.append(self.allies.pop(0))
+            self.target = self.pool[-1]
+            ally = None
+        if kills:
+            self._kill(kills)
+        if e.get("target_dies"):
+            self._kill(1, mine=False)
         if e.get("partner_dies") and "partner" in self.pool:
             self.pool.remove("partner")
             self.fallen_today.append("partner")
-        ally = e.get("ally")
         if ally and ally != "joins_partner" and self.allies:
             name = self.allies.pop(0)
             if ally == "dies":
@@ -1165,7 +1200,8 @@ class Game:
             self._win()
         return None if self.over else e.get("next")
 
-    def _kill(self, n: int) -> None:
+    def _kill(self, n: int, mine: bool = True) -> None:
+        """n tributes die: the card's target first. mine=False when they die but it isn't your kill."""
         for _ in range(n):
             if self.target in self.pool:
                 v = self.target
@@ -1177,15 +1213,16 @@ class Game:
                 v = victims[0]
             self.pool.remove(v)
             self.fallen_today.append(v)
-            self.killed.add(v)
-            self.new_kills.append(self._name(v))
-            self.kills += 1
-            self.kills_today += 1
+            if mine:
+                self.killed.add(v)
+                self.new_kills.append(self._name(v))
+                self.kills += 1
+                self.kills_today += 1
             for d in range(self.day, MAX_DAYS + 1):
                 if self.schedule[d] > 0:
                     self.schedule[d] -= 1
                     break
-        if "⚔️" not in self.days[self.day]:
+        if mine and "⚔️" not in self.days[self.day]:
             self.days[self.day].append("⚔️")
 
     def _gift(self) -> None:

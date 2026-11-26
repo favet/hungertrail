@@ -15,7 +15,7 @@ from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SIFT
                                      Game, cards, new_setup, replay)
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
-KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies"}
+KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies", "target_dies"}
 KNOWN_NEEDS = {"item", "any", "perk", "ally", "supplies"}
 
 
@@ -113,6 +113,54 @@ def test_kills_take_the_named_tribute():
     g._apply({"kill": 1}, card)
     assert g.target is None and g.fallen_today[-1].startswith("the District")
     assert g.fallen_today[-1] not in g.pool
+
+
+def test_striking_first_kills_the_ally_and_mercy_is_not_a_kill():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.allies = ["Rue"]
+    strangers = list(g.pool)
+    g._apply({"ally": "dies", "kill": 1}, cards()["betrayal"])
+    assert g.allies == [] and g.new_kills[-1] == "Rue" and g.fallen_today[-1] == "Rue" and g.pool == strangers
+    card = cards()["lone_sleeper"]
+    g.target = g._pick_target(card)
+    kills = g.kills
+    g._apply({"target_dies": True}, card)
+    assert g.kills == kills and g.fallen_today[-1] not in g.pool and g.fallen_today[-1] not in g.killed
+
+
+def test_the_medkit_makes_room_in_a_full_pack():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.kit = ["knife", "medkit", "rope"]
+    g.health = 50
+    g.resume = ("night",)
+    g._gain("bow")
+    g._advance(("night",))
+    assert g.card == SWAP
+    use = [o for o in g.options() if o["index"] == USE]
+    assert use and use[0]["label"] == "Use the medkit, then take the bow"
+    g.choose(USE)
+    assert g.health >= 90 and sorted(g.kit) == ["bow", "knife", "rope"] and g.card != SWAP
+
+
+def test_a_close_call_at_the_horn_keeps_you_grabbing():
+    for salt in range(400):
+        g = Game(5, salt, SETUP)
+        edge = next(o for o in g.options() if o.get("ring") == "edge")
+        g.choose(edge["index"])
+        roll = next(e for e in g.log if e["kind"] == "roll")
+        if roll["near"]:
+            assert g.card == DRAFT and g.grabs == 1 and g.health < 100
+            return
+    raise AssertionError("no close call in 400 runs")
+
+
+def test_no_close_call_when_half_the_damage_still_kills():
+    g = Game(5, 9, SETUP)
+    g.health = 10
+    opts = [o for o in g.options() if o.get("ring") == "horn"]
+    assert opts and not any(o["wheel"]["near"] for o in opts)
 
 
 def test_final_fight_runs_on_health():

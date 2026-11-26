@@ -439,11 +439,41 @@ function showOptions(v) {
     return;
   }
   if (v.sift) box.append(siftGrid(v.sift, v.options, delay));
+  if (v.card === "draft") return box.append(hornDraft(v, delay));
   v.options.filter((o) => o.dig == null).forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
-  if (v.card === "draft" && v.status.day === 1 && !v.log.some((e) => e.kind === "roll")) {
-    box.append(el("p", { class: "legend appear", style: `animation-delay:${delay + 300}ms` },
-      el("span", { class: "lose", text: "✗" }), " what a miss costs  ☠️ could kill you"));
+}
+
+// The Cornucopia: three rings, two things in each. One line of rules, then each ring says its odds
+// and what a miss costs once, in words, and the things in it say only what they're for.
+function hornDraft(v, delay) {
+  const wrap = el("div", { class: "horndraft appear", style: `animation-delay:${delay}ms` });
+  const grabs = v.options.filter((o) => o.ring);
+  const first = !v.log.some((e) => e.kind === "roll" && e.day === 1);
+  wrap.append(el("p", { class: "hornrule", text: first
+    ? "Grab up to two things. The closer to the horn, the better the loot and the worse a miss. Miss, and you run with what you have."
+    : "One more grab, or run. The Careers are here now: every grab is harder." }));
+  for (const ring of ["edge", "mid", "horn"]) {
+    const items = grabs.filter((o) => o.ring === ring);
+    if (!items.length) continue;
+    const o0 = items[0];
+    const sec = el("div", { class: "hornring " + ring });
+    sec.append(el("div", { class: "ringhead" },
+      el("span", { class: "rname", text: { edge: "At the edge", mid: "Halfway in", horn: "At the horn" }[ring] }),
+      el("span", { class: "rmiss" + (o0.deadly ? " deadly" : ""), text: o0.deadly ? "a miss could kill you" : `a miss: −${o0.dmg} health` }),
+      el("span", { class: "chance " + (o0.chance >= 70 ? "good" : o0.chance >= 45 ? "even" : "long"), text: o0.chance + "%" })));
+    const row = el("div", { class: "ringitems" });
+    for (const o of items) {
+      const [icon, ...name] = o.win[0].split(" ");
+      row.append(el("button", { class: "grabitem", onclick: () => pickOption(o) },
+        el("span", { class: "gname" }, el("i", { text: icon }), " " + name.join(" ")),
+        el("small", { text: o.desc })));
+    }
+    sec.append(row);
+    wrap.append(sec);
   }
+  const run = v.options.find((o) => !o.ring);
+  if (run) wrap.append(optionButton(run, 0, 0, "run"));
+  return wrap;
 }
 
 // A tap on the story while it's still appearing shows the rest of the scene at once.
@@ -540,15 +570,6 @@ function optionButton(o, i, delay, card) {
     stakes.append(el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + (o.lose.length ? o.lose.join(" ") : "nothing lost") }));
   } else if (o.win.length) {
     stakes.append(el("span", { class: "win", text: "→ " + o.win.join(" ") }));
-  }
-  if (card === "draft" && o.chance != null) {
-    // Compact two-column grab buttons, so the Cornucopia and the story stay on screen.
-    return el("button", { class: "option grab appear", style: `animation-delay:${delay + i * 40}ms`, onclick: () => pickOption(o) },
-      el("span", { class: "label" },
-        el("span", { class: "ltext", text: o.win[0] }),
-        el("small", { class: "hint", text: o.hint.split(". ").slice(1).join(". ") }),
-        el("span", { class: "stakes" }, el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + o.lose.join(" ") }))),
-      el("span", { class: "chance " + (o.chance >= 70 ? "good" : o.chance >= 45 ? "even" : "long"), text: o.chance + "%" }));
   }
   const hint = o.place ? null : o.hint;  // places speak through their chips
   return el("button", { class: "option appear" + (o.place ? " where" : ""), style: `animation-delay:${delay + i * 60}ms`, onclick: () => pickOption(o) },

@@ -83,13 +83,23 @@
 .option .hint { font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .option .stakes { display: flex; flex-wrap: wrap; gap: 0 0.6rem; font-size: 0.74rem; line-height: 1.3; margin-top: 0.05rem; }
 .option .stakes span { white-space: nowrap; }
-#options.draft { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
-.option.grab .label { min-width: 0; overflow: hidden; }
-#options.draft .option:not(.grab), #options.draft .legend { grid-column: 1 / -1; }
-.option.grab { min-height: 0; padding: 0.3rem 0.45rem; gap: 0.3rem; align-items: flex-start; }
-.option.grab .ltext { font-size: 0.88rem; }
-.option.grab .hint { white-space: normal; line-height: 1.15; font-size: 0.66rem; }
-.option.grab .chance { font-size: 1.2rem; min-width: 0; }
+/* the Cornucopia: three rings, odds and the cost of a miss said once per ring */
+.horndraft { display: flex; flex-direction: column; gap: 0.4rem; }
+.hornrule { margin: 0; font-size: 13px; line-height: 1.35; color: var(--fg); border-left: 2px solid var(--accent); padding-left: 0.55rem; }
+.hornring { border: 1px solid var(--line); background: var(--panel); padding: 0.3rem 0.4rem 0.4rem; }
+.hornring.mid { border-color: #3d4a1f; }
+.hornring.horn { border-color: #5a3a1c; }
+.ringhead { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.3rem; }
+.ringhead .rname { font-family: var(--pixel); font-size: 1.25rem; color: var(--accent); line-height: 1; }
+.ringhead .rmiss { flex: 1; font-size: 12px; color: var(--bad); white-space: nowrap; }
+.ringhead .rmiss.deadly { font-weight: bold; }
+.ringhead .chance { font-size: 1.5rem; line-height: 1; min-width: 0; }
+.ringitems { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
+.grabitem { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; text-align: left; padding: 0.35rem 0.45rem; min-width: 0; }
+.grabitem .gname { font-family: var(--mono); font-weight: bold; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.grabitem .gname i { font-style: normal; }
+.grabitem small { font-family: var(--mono); font-size: 11.5px; line-height: 1.25; color: var(--dim); }
+.horndraft .option .key { display: none; }
 .win { color: var(--good); }
 .lose { color: #ff9a8a; }
 .lose.deadly { color: var(--bad); font-weight: bold; }
@@ -109,8 +119,8 @@
 #log .entry.victory { font-family: var(--pixel); font-size: 1.8rem; line-height: 1.05; }
 #log .entry.roll { font-size: 15px; align-items: center; }
 #log .entry.roll span { font-family: var(--pixel); font-size: 1.3rem; }
-#options .option .ltext, #options .option.grab .ltext { font-family: var(--mono); font-size: 15px; font-weight: bold; }
-#options .option .hint, #options .option.grab .hint { font-family: var(--mono); font-size: 12px; }
+#options .option .ltext { font-family: var(--mono); font-size: 15px; font-weight: bold; }
+#options .option .hint { font-family: var(--mono); font-size: 12px; }
 #options .option .stakes { font-family: var(--mono); font-size: 12.5px; }
 .legend { font-size: 12px; }
 .daysum { font-size: 12px; }

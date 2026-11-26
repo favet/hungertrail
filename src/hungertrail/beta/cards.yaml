@@ -12,7 +12,8 @@
 #          sets how wide the searcher's light is); success and fail are the same.
 # Effects: health supplies (+/-), add/remove (item or list), kill (n), sponsor (a silver
 #          parachute: what you need most), gift (a random found item),
-#          ally (dies|lost|joins_partner), die (cause), cause (if this outcome kills you),
+#          ally (dies|lost|joins_partner; with kill, the ally is your kill), target_dies (they die,
+#          not by your hand), die (cause), cause (if this outcome kills you),
 #          next (card id, or "duel"), win, partner_dies
 # Nothing is hidden: every effect shows on the option as a chip.
 # Text can use {ally} {partner} {district} {Target} {target} {Nemesis} {nemesis} {remaining}.
@@ -791,7 +792,7 @@
   requires:
     min_remaining: 4
   emoji: ⚔️
-  text: Below the ridge, two tributes are fighting to the death.
+  text: In the shadow of the horn, two tributes are fighting to the death.
   options:
   - label: Finish the winner
     hint: Whoever wins will be exhausted.
@@ -2003,7 +2004,7 @@
     effects:
       supplies: -1
       sponsor: true
-      kill: 1
+      target_dies: true
   - label: End it
     tag: bold
     text: Mercy, of a kind.

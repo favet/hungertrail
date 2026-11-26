@@ -93,9 +93,9 @@ const Wheel = (() => {
     box.append(wrap, edgeList(odds));
     const stakes = mk("div", "wheel-stakes");
     stakes.append(mk("span", "win", "Green: " + (o.win.length ? o.win.join(", ") : "you're fine")));
-    const lose = o.lose.map((x) => (x === "☠️" ? "it could kill you" : x));
+    const lose = o.lose.map((x) => (x === "☠️" ? "it could kill you" : x.replace(/^❤️−(\d+)$/, "−$1 health")));
     stakes.append(mk("span", "lose", "Red: " + (lose.length ? lose.join(", ") : "nothing lost")));
-    if (odds.near) stakes.append(mk("span", "near", "Yellow: a close call, half the damage"));
+    if (odds.near) stakes.append(mk("span", "near", "Yellow: " + (o.near_text || "a close call, half the damage")));
     box.append(stakes);
     const row = mk("div", "wheel-buttons");
     const back = mk("button", "big", "Back");
