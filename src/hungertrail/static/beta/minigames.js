@@ -22,7 +22,7 @@ const Sim = (() => {
   }
 
   // Fishing: one tick of the bar. Returns the new state; c is the catch meter (0-1000).
-  function fishInit(p) { return { y: 0, v: 0, c: p.start, t: 0, done: null }; }
+  function fishInit(p) { return { y: p.y0 || 0, v: 0, c: p.start, t: 0, done: null }; }
   function fishStep(p, s, hold) {
     s.v = clamp(s.v + (hold ? p.up : -p.down), -p.vmax, p.vmax);
     s.y += s.v;
@@ -31,7 +31,7 @@ const Sim = (() => {
     if (s.y > top) { s.y = top; s.v = 0; }
     const f = pathAt(p.path, s.t);
     s.on = s.y <= f && f <= s.y + p.bar;
-    s.c += s.on ? p.gain : -p.loss;
+    s.c += s.on ? p.gain : s.t >= (p.grace || 0) ? -p.loss : 0;
     s.t += 1;
     if (s.c >= 1000) s.done = "caught";
     else if (s.c <= 0 || s.t >= p.duration) s.done = "escaped";

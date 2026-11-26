@@ -19,7 +19,7 @@ from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
 RELEASE = "Beta 4"  # the name on the title screen, so a tester can tell which beta is live
-VERSION = "b6"  # b6: the nemesis arc (wounds, study, last fight), softer damage, food cap, honest chips
+VERSION = "b7"  # b7: forgiving fishing (start on the fish, 2 s grace)
 
 
 def _mac(settings: Settings, body: bytes) -> str:

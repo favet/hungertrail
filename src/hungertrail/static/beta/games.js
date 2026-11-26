@@ -84,21 +84,29 @@ const Games = (() => {
     well.append(bar, fishy);
     const scene = mk("div", "fishscene");
     scene.append(well, meter);
-    const line = mk("p", "hunt-shots", "Line: 30%");
-    let sim, tg;
+    const line = mk("p", "hunt-shots", "Get ready...");
+    let sim = null, tg = null;
     const s = Sim.fishInit(p);
-    const btn = holdButton("Hold to reel", () => tg.flip());
+    // Nothing moves until you've had a moment to look, or until you press, whichever comes first.
+    const begin = () => {
+      if (sim) return;
+      sim = clock((t) => {
+        Sim.fishStep(p, s, tg.holding(t));
+        if (s.done) return false;
+      }, draw);
+      tg = toggler(sim);
+      stop = () => sim.end();
+    };
+    const btn = holdButton("Hold to reel", () => { begin(); tg.flip(); });
     box.append(scene, line, btn);
-    sim = clock((t) => {
-      Sim.fishStep(p, s, tg.holding(t));
-      if (s.done) return false;
-    }, () => {
+    function draw() {
       bar.style.height = pct(p.bar);
       bar.style.bottom = pct(s.y);
       bar.classList.toggle("on", !!s.on);
       fishy.style.bottom = `calc(${pct(Sim.pathAt(p.path, s.t))} - 0.7rem)`;
       fill.style.height = Math.max(0, s.c) / 10 + "%";
-      line.textContent = "Line: " + Math.max(0, Math.round(s.c / 10)) + "%";
+      if (!sim) return;
+      line.textContent = "Line: " + Math.max(0, Math.round(s.c / 10)) + "%" + (s.t < (p.grace || 0) ? " · reel in" : "");
       if (s.done && !box.querySelector(".mg-verdict")) {
         sim.end();
         btn.disabled = true;
@@ -108,9 +116,10 @@ const Games = (() => {
         const used = tg.toggles.filter((x) => x < s.t);
         close(() => done(used));
       }
-    });
-    tg = toggler(sim);
-    stop = () => sim.end();
+    }
+    draw();
+    const wait = setTimeout(begin, 1500);
+    stop = () => { clearTimeout(wait); if (sim) sim.end(); };
   }
 
   // ---------------------------------------------------------------- hunting

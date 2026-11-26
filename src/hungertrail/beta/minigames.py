@@ -72,6 +72,9 @@ FISH_KINDS = {
 }
 
 
+FISH_GRACE = 2 * TPS
+
+
 def fish_params(r: random.Random, kind: str, bar: int) -> dict:
     duration = 20 * TPS
     # A leech stays above your bar while it rests, so letting it go means just not reeling.
@@ -97,15 +100,19 @@ def fish_params(r: random.Random, kind: str, bar: int) -> dict:
                 pos = _clamp(pos + r.choice((-1, 1)) * r.randint(800, 2500), 500, 9500)
         path.append([t, pos])
     emoji, food, health, gain = FISH_KINDS[kind]
+    # Forgiving at the start: the bar starts on the fish (under the leech, so leaving it alone still
+    # lets it go), and for the first FISH_GRACE ticks the line can fill but can't run out.
+    y0 = 0 if kind == "leech" else _clamp(path[0][1] - bar // 2, 0, SPAN - bar)
     return {
         "game": "fish", "kind": kind, "emoji": emoji, "duration": duration, "path": path,
         "bar": bar, "up": 6, "down": 4, "vmax": 140, "start": 300, "gain": gain, "loss": 3,
+        "y0": y0, "grace": FISH_GRACE,
     }
 
 
 def fish_run(p: dict, toggles: list[int]) -> tuple[bool, int]:
     """Returns (caught, ticks played)."""
-    hold, y, v, c, i = False, 0, 0, p["start"], 0
+    hold, y, v, c, i = False, p.get("y0", 0), 0, p["start"], 0
     top = SPAN - p["bar"]
     for t in range(p["duration"]):
         while i < len(toggles) and toggles[i] <= t:
@@ -119,7 +126,7 @@ def fish_run(p: dict, toggles: list[int]) -> tuple[bool, int]:
         if y > top:
             y, v = top, 0
         f = path_at(p["path"], t)
-        c += p["gain"] if y <= f <= y + p["bar"] else -p["loss"]
+        c += p["gain"] if y <= f <= y + p["bar"] else -p["loss"] if t >= p.get("grace", 0) else 0
         if c >= 1000:
             return True, t + 1
         if c <= 0:
@@ -315,7 +322,7 @@ def clean_taps(raw, shots: int) -> list[int]:
 def bot_fish(p: dict, skill: float, r: random.Random) -> list[int]:
     lag = round(14 - 8 * skill + r.randint(0, 4))
     slack = round(900 - 600 * skill)  # how far off the fish it lets the bar drift before reacting
-    hold, y, v = False, 0, 0
+    hold, y, v = False, p.get("y0", 0), 0
     top = SPAN - p["bar"]
     toggles = []
     for t in range(p["duration"]):
