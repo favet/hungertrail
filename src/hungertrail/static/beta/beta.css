@@ -217,39 +217,16 @@
 .strikebtn { text-align: center; font-size: 2rem; padding: 0.6rem; touch-action: none; }
 .strikebtn.glow { box-shadow: 0 0 14px var(--gold); background: var(--gold); border-color: var(--gold); }
 
-/* the sift: the Crystal Sphere. Treasures cover several tiles; a piece shows its outer edges. */
-#options.sifting { gap: 0.3rem; }
-.sift { display: flex; flex-direction: column; gap: 0.3rem; }
-.siftgrid { display: grid; gap: 2px; width: min(100%, 21rem); margin: 0 auto; }
-.tile { aspect-ratio: 1; padding: 0; position: relative; display: grid; place-items: center; font-size: 1rem; min-height: 0;
-  background: repeating-linear-gradient(45deg, #1b2618 0 4px, #15200f 4px 8px); border: 1px solid var(--line); }
-.tile.open { background: var(--bg); border-color: #18241a; }
-.tile:disabled { opacity: 1; }
-.siftgrid.idle .tile { opacity: 0.5; }
-.tile .what { line-height: 1; }
-.tile.piece { background: #2a2410; border: 1px solid #2a2410; }
-.tile.piece .what { opacity: 0.55; }
-.tile.done { background: #12301a; border: 1px solid #12301a; }
-.tile.trap { background: #331210; border: 1px solid #331210; }
-.tile.piece.et { border-top: 2px solid var(--gold); } .tile.piece.er { border-right: 2px solid var(--gold); }
-.tile.piece.eb { border-bottom: 2px solid var(--gold); } .tile.piece.el { border-left: 2px solid var(--gold); }
-.tile.done.et { border-top: 2px solid var(--good); } .tile.done.er { border-right: 2px solid var(--good); }
-.tile.done.eb { border-bottom: 2px solid var(--good); } .tile.done.el { border-left: 2px solid var(--good); }
-.tile.trap.et { border-top: 2px solid var(--bad); } .tile.trap.er { border-right: 2px solid var(--bad); }
-.tile.trap.eb { border-bottom: 2px solid var(--bad); } .tile.trap.el { border-left: 2px solid var(--bad); }
-.tile.aim { border: 2px solid var(--accent); box-shadow: inset 0 0 6px var(--accent); }
-.siftbar { display: flex; gap: 0.35rem; align-items: center; }
-.siftbar .digs { flex: 1; font-family: var(--pixel); font-size: 1.35rem; color: var(--accent); white-space: nowrap; }
-.siftbar .mode { padding: 0.3rem 0.5rem; font-size: 12px; }
-.siftbar .mode.on { border-color: var(--accent); background: #2a1708; }
-.sifthint { margin: 0; text-align: center; font-size: 12px; min-height: 1em; }
-.siftlegend { display: flex; flex-wrap: wrap; gap: 0.15rem 0.7rem; justify-content: center; font-size: 12px; color: var(--fg); }
-.siftlegend .lg i { font-style: normal; color: var(--dim); }
-.siftlegend .lghead { flex: 1 1 100%; text-align: center; color: var(--dim); }
-.siftlegend .lg b { color: var(--gold); font-weight: normal; }
-.siftlegend .lg.done b { color: var(--good); }
-.siftlegend .lg.trap { color: #ff9a8a; }
-.siftlegend .lg.trap.done b { color: var(--bad); }
+/* the dig at the horn: what's buried, how close the Careers are, what you've dug out */
+#options.digging { gap: 0.4rem; }
+.dig { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0.7rem; border: 1px solid var(--line); }
+.digrow { display: flex; align-items: baseline; gap: 0.6rem; }
+.digrow .dname { flex: 0 0 4.2rem; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.digrow .dwhat { font-size: 1.1rem; letter-spacing: 0.02em; white-space: nowrap; }
+.digrow .dwhat i { font-style: normal; color: var(--dim); margin-right: 0.2rem; }
+.digrow .dwhat i.on { color: var(--bad); }
+.digrow .dwhat .dim { font-size: 13px; letter-spacing: normal; }
+.option .hint.danger { color: var(--bad); }
 
 /* the opponent's health during the final fight */
 #status .row1 .who.foe { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.15rem; color: var(--bad); }
@@ -292,6 +269,7 @@
 .wheel-svg .wtick { stroke: var(--bg); stroke-width: 1.6; }
 .wheel-svg .wrim { fill: none; stroke: var(--line); stroke-width: 4; }
 .wheel-svg .wicon { font-size: 17px; }
+.wheel-svg .wpart { stroke: var(--bg); stroke-width: 1.5; }
 .wheel-pointer { position: absolute; left: 50%; top: -0.55rem; transform: translateX(-50%); width: 0; height: 0;
   border-left: 0.6rem solid transparent; border-right: 0.6rem solid transparent; border-top: 1rem solid var(--fg); filter: drop-shadow(0 0 2px #000); }
 .wheel-hub { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34%; aspect-ratio: 1; display: grid; place-items: center;

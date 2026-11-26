@@ -19,7 +19,7 @@ from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
 RELEASE = "Beta 4"  # the name on the title screen, so a tester can tell which beta is live
-VERSION = "b7"  # b7: forgiving fishing (start on the fish, 2 s grace)
+VERSION = "b8"  # b8: the dig at the horn is push-your-luck, not the sift
 
 
 def _mac(settings: Settings, body: bytes) -> str:
@@ -149,7 +149,7 @@ def view(settings: Settings, token: str, game: Game, p: dict) -> dict:
         "card": game.card,
         "options": game.options(),
         "locked": game.locked(),
-        "sift": game.sift_view(),
+        "dig": game.dig_view(),
         "nemesis": game.nemesis_name[0].upper() + game.nemesis_name[1:],
         "over": game.over,
         "result": result(settings, game, p),

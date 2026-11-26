@@ -9,7 +9,7 @@ from collections import Counter
 
 from . import lore
 from . import minigames as mg
-from .engine import DRAFT, DUEL, PLACES, SIFT, SIFT_BIG, SIFT_SMALL, SIFT_STOP, SWAP, USE, Game, new_setup  # noqa: F401
+from .engine import DIG, DIG_CAUGHT, DIG_GO, DIG_HIT, DIG_LEAVE, DRAFT, DUEL, PLACES, SWAP, USE, Game, new_setup  # noqa: F401
 
 VALUE = {"trident": 9, "bow": 9, "spear": 7, "axe": 6, "rope": 6, "medkit": 5, "knife": 5, "sleeping_bag": 4, "iodine": 4}
 
@@ -24,9 +24,8 @@ def random_bot(g: Game, r: random.Random):
 
 def hider(g: Game, r: random.Random):
     opts = g.options()
-    if g.card == SIFT:
-        v = g.sift_view()
-        return 0 if v["how"] is None and g.supplies >= 1 else SIFT_STOP if v["how"] else opts[-1]["index"]
+    if g.card == DIG:
+        return DIG_LEAVE
     for tag in ("hide", "safe"):
         pick = [o for o in opts if o["tag"] == tag]
         if pick:
@@ -38,53 +37,23 @@ def brute(g: Game, r: random.Random):
     opts = g.options()
     if g.card == SWAP:
         return opts[0]["index"]
-    if g.card == SIFT:
-        return sifter(g, r, greedy=True)
+    if g.card == DIG:
+        return DIG_GO
     bold = [o for o in opts if o["tag"] == "bold"]
     if bold:
         return _best(bold, lambda o: o["chance"] or 100)["index"]
     return _best(opts, lambda o: o["chance"] or 100)["index"]
 
 
-def sifter(g: Game, r: random.Random, greedy: bool = False):
-    """Digs the way a player who reads the pieces would: finish what's half dug, else open new ground."""
-    v = g.sift_view()
-    if v["how"] is None:
-        return 1 if greedy or g.supplies < 2 else 0
-    if g.health < 30 and not greedy:
-        return SIFT_STOP
-    n = v["size"]
-    tiles = v["tiles"]
-    closed = {i for i in range(n * n) if not tiles[i]["open"]}
-
-    def fits(cells, sid):
-        return all(c in closed or tiles[c].get("shape") == sid for c in cells)
-
-    def area(i):
-        x, y = i % n, i // n
-        return [(y + dy) * n + x + dx for dy in (-1, 0, 1) for dx in (-1, 0, 1) if 0 <= x + dx < n and 0 <= y + dy < n]
-
-    # 1. Finish a treasure you've found a piece of: count where its rectangle could still lie.
-    for t in v["legend"]:
-        if t["trap"] or t["done"] or not t["found"]:
-            continue
-        seen = [i for i in range(n * n) if tiles[i].get("shape") == t["shape"]]
-        votes: dict[int, int] = {}
-        for w, h in {(t["w"], t["h"]), (t["h"], t["w"])}:
-            for y in range(n - h + 1):
-                for x in range(n - w + 1):
-                    cells = [(y + dy) * n + x + dx for dy in range(h) for dx in range(w)]
-                    if all(c in cells for c in seen) and fits(cells, t["shape"]):
-                        for c in cells:
-                            if c in closed:
-                                votes[c] = votes.get(c, 0) + 1
-        if votes:
-            best = max(votes, key=lambda c: (votes[c], r.random()))
-            left = t["w"] * t["h"] - t["found"]
-            return (SIFT_BIG if left >= 4 and v["digs"] > 0 else SIFT_SMALL) + best
-    # 2. Open new ground where a big dig turns the most closed tiles.
-    best = max(closed, key=lambda i: (sum(c in closed for c in area(i)), r.random()))
-    return SIFT_BIG + best
+def digger(g: Game, nerve: float = 0.34):
+    """Digs while the next spin can't bring them, then only while the odds of it stay under its nerve."""
+    v = g.dig_view()
+    if v["heard"] < DIG_CAUGHT - 1:
+        return DIG_GO
+    risk = v["buried"].count("👂") / len(v["buried"])
+    if g.health <= DIG_HIT + 5 or risk > (nerve + 0.15 if not v["haul"] else nerve):
+        return DIG_LEAVE
+    return DIG_GO
 
 
 def shopper(g: Game):
@@ -105,8 +74,8 @@ def smart(g: Game, r: random.Random):
     if buy is not None:
         return buy
     opts = g.options()
-    if g.card == SIFT:
-        return sifter(g, r)
+    if g.card == DIG:
+        return digger(g)
     if g.card == DRAFT:
         grabs = [o for o in opts if o["chance"] is not None and (o["chance"] >= 55 or g.grabs == 0)]
         if grabs and g.health >= 60:

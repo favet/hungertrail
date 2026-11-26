@@ -17,7 +17,7 @@ Same contract as the live engine: pure and deterministic, a run is (seed, salt, 
 - The final fight runs on health, yours and theirs. Each exchange you pick a stance, then read their
   wind-up and block it; a clean block opens a moment to strike back.
 - Minigames (minigames.py) are played in the browser and replayed here from the player's inputs:
-  fishing at the stream, hunting on the ridge, the sift at the horn, holding still when you hide,
+  fishing at the stream, hunting on the ridge, the dig at the horn (a wheel per dig), holding still when you hide,
   and every exchange of the final fight. Their layouts come from the daily seed (the same for
   everyone today); only the fight's tells come from the run's own dice.
 - Rolls and minigames the player chose are logged as "roll" entries so the screen can show what happened.
@@ -72,25 +72,20 @@ SPONSOR_MENU = [  # key, what it is, icon, price in stars (each order raises eve
 ]
 SPONSORS = ("the Capitol's fashion set", "an old Victor from your district", "a jeweller in District 1",
             "a fan club in the Capitol", "someone who won money on you")
-DRAFT, PLACES, SWAP, DUEL, SIFT = "draft", "places", "swap", "duel", "sift"
+DRAFT, PLACES, SWAP, DUEL, DIG = "draft", "places", "swap", "duel", "dig"
 
-# The sift, after Slay the Spire's Crystal Sphere: a 9x9 grid of rubble at the horn hides treasures
-# that each cover several tiles, and a few traps. A treasure is yours only once every tile of it is
-# uncovered. A small dig opens one tile, a big dig a 3x3. Dig quietly (4 digs, costs a day of supplies)
-# or loudly (6 digs, free, but Careers hear you and lie in wait in the rubble).
-SIFT_SIZE = 9
-SIFT_DIGS = {"quiet": 4, "loud": 6}
-SIFT_SMALL, SIFT_BIG, SIFT_STOP = 100, 200, 300  # choice index = SIFT_SMALL + tile, SIFT_BIG + tile
-# What's buried: (kind, width, height). Items are picked from the pools by the daily seed.
-SIFT_TREASURES = [("crate", 3, 3), ("weapon", 3, 1), ("pack", 2, 2), ("pack", 2, 2), ("tool", 2, 1),
-                  ("can", 1, 1), ("can", 1, 1), ("can", 1, 1)]
-SIFT_POOLS = {"crate": ("bow", "trident", "medkit"), "weapon": ("spear", "axe", "knife"),
-              "tool": ("rope", "iodine", "sleeping_bag")}
-SIFT_TRAPS = [("mine", 1, 1), ("snare", 2, 1)]
-SIFT_CAREERS = [("career", 2, 1), ("career", 1, 2)]  # only when you dig loudly
-SIFT_HURT = {"snare": (12, "a snare in the rubble"), "mine": (30, "a mine left from the bloodbath"),
-             "career": (25, "a Career who heard you digging")}
-SIFT_TRAP_NAMES = {"mine": ("💥", "a mine"), "snare": ("🪤", "a snare"), "career": ("👁️", "a Career")}
+# The dig at the horn: push your luck. The rubble is a pile you can see: loot, and noise. Each dig
+# spins the wheel, one slice for each thing still buried. Loot goes in your haul; the third noise
+# brings a Career, and you drop the haul and run. Leave whenever you like with what you've dug out.
+# What's buried comes from the daily seed (the same pile for everyone today); the spins are the run's.
+DIG_GO, DIG_LEAVE = 0, 1
+DIG_NOISE = 4  # noises in the pile
+DIG_CAUGHT = 3  # the noise that brings them
+DIG_HIT = 20  # what the Career costs you
+DIG_LOOT = [("pack", ""), ("can", ""), ("can", ""), ("weapon", ("spear", "axe", "knife")),
+            ("tool", ("rope", "iodine", "sleeping_bag")), ("crate", ("bow", "trident", "medkit"))]
+NOISES = ("Metal clangs on stone.", "A crate lid slips and slams.", "Glass breaks under your knee.",
+          "A plank snaps like a shot.", "Cans spill and roll.")
 
 # Cornucopia rings: base odds, damage on a miss, how it reads.
 RINGS = {
@@ -161,6 +156,10 @@ def _sign(n: int) -> str:
 
 # Stakes are words, not emoji: what you gain or lose, said plainly.
 DEADLY = "could kill you"
+
+
+def _join(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
 
 
 def hp(n: int) -> str:
@@ -279,7 +278,7 @@ class Game:
         self.opp_health = 0
         self.opp_max = 0
         self.exchanges = 0
-        self.sift: dict | None = None
+        self.dig: dict | None = None
         self.item_queue: list[str] = []
         self.grabs = 0
         self.taken: set[int] = set()
@@ -341,8 +340,8 @@ class Game:
             return self._swap_options()
         if self.card == DUEL:
             return self._duel_options()
-        if self.card == SIFT:
-            return self._sift_options()
+        if self.card == DIG:
+            return self._dig_options()
         card = cards()[self.card]
         out = []
         for i, o in enumerate(card["options"]):
@@ -372,7 +371,7 @@ class Game:
 
     def locked(self) -> list[dict]:
         """Options on this card that an item you don't have would unlock: shown greyed, so kit means something."""
-        if self.over or self.card in (DRAFT, PLACES, SWAP, DUEL, SIFT) or self.card not in cards():
+        if self.over or self.card in (DRAFT, PLACES, SWAP, DUEL, DIG) or self.card not in cards():
             return []
         out = []
         for o in cards()[self.card]["options"]:
@@ -417,8 +416,8 @@ class Game:
             dest = self._resolve_swap(index)
         elif self.card == DUEL:
             dest = ("round", self._resolve_duel(index, param, game))
-        elif self.card == SIFT:
-            dest = self._resolve_sift(index)
+        elif self.card == DIG:
+            dest = self._resolve_dig(index)
         else:
             dest = self._resolve_card(index, param, game)
         if self.cheer and not self.over:
@@ -664,10 +663,9 @@ class Game:
             self._say("The Careers are at the horn now. One more grab, or run?", "prompt")
         elif kind == "duel":
             self._start_duel()
-        elif kind == "sift":
-            self.card = SIFT
-            self._say("The bloodbath left the ground around the horn a mess of crates and rubble. Some of it was "
-                      "never picked over. Digging is slow, and it isn't quiet.", "event")
+        elif kind == "dig":
+            self.card = DIG
+            self._say("Rubble at the horn. Some of it was never picked over. Dig until you hear them coming.", "event")
 
     def _draw(self, card_id: str) -> None:
         self.card = card_id
@@ -982,8 +980,8 @@ class Game:
                 else:
                     self._say(self._pick("You find nothing but blisters.", "Everything edible up here was eaten days ago."), "result")
         elif key == "horn":
-            self._start_sift()
-            return ("sift",)
+            self._start_dig()
+            return ("dig",)
         elif key == "open":
             _, ok, _ = self._reveal(self._open_odds(), "Play to the cameras", near_counts=False)
             if ok:
@@ -1048,187 +1046,98 @@ class Game:
         return mg.hide_params(_rng(self.seed, "hide", card_id, self.day), base, breath, 200 * len(self.allies),
                               card_id == "nemesis_sighting")
 
-    # ------------------------------------------------------------------ the sift
-    def _start_sift(self) -> None:
-        """Bury today's treasures and traps. The layout comes from the daily seed: the same for everyone."""
-        r = _rng(self.seed, "sift", self.day)
-        n = SIFT_SIZE
+    # ------------------------------------------------------------------ the dig
+    def _start_dig(self) -> None:
+        """Bury today's pile. What's in it comes from the daily seed: the same for everyone."""
+        r = _rng(self.seed, "dig", self.day)
+        loot = [{"kind": k, "item": r.choice(pool) if pool else ""} for k, pool in DIG_LOOT]
+        self.dig = {"loot": loot, "noise": DIG_NOISE, "heard": 0, "haul": []}
 
-        def place(w: int, h: int, taken: set[int], gap: int) -> list[int] | None:
-            if w != h and r.random() < 0.5:
-                w, h = h, w
-            for _ in range(200):
-                x, y = r.randrange(n - w + 1), r.randrange(n - h + 1)
-                cells = [(y + dy) * n + x + dx for dy in range(h) for dx in range(w)]
-                # keep a gap around every shape, so two never touch and a piece's edges read true
-                ring = {(y + dy) * n + x + dx for dy in range(-gap, h + gap) for dx in range(-gap, w + gap)
-                        if 0 <= x + dx < n and 0 <= y + dy < n}
-                if not ring & taken:
-                    taken.update(cells)
-                    return cells
+    @staticmethod
+    def _dig_name(t: dict) -> tuple[str, str]:
+        if t["kind"] == "pack":
+            return "🎒", "a pack of food"
+        if t["kind"] == "can":
+            return "🥫", "a can of food"
+        return lore.item_emoji(t["item"]), "a " + lore.item_name(t["item"])
+
+    def _dig_slices(self) -> list[dict]:
+        """The wheel for the next dig: one equal slice for each thing still buried, loot first."""
+        d = self.dig
+        things = [(self._dig_name(t)[0], True) for t in d["loot"]] + [("👂", False)] * d["noise"]
+        n = len(things)
+        return [{"a": round(i * 100 / n), "b": round((i + 1) * 100 / n), "icon": icon, "ok": ok}
+                for i, (icon, ok) in enumerate(things)]
+
+    def _dig_options(self) -> list[dict]:
+        d = self.dig
+        left = len(d["loot"]) + d["noise"]
+        last = d["heard"] == DIG_CAUGHT - 1
+        hint = f"{d['noise']} in {left} " + ("brings them" if last else "is noise")
+        return [
+            self._opt(DIG_GO, "Dig", hint, None, "bold", [], [], pile=True, danger=last),
+            self._opt(DIG_LEAVE, "Leave with it" if d["haul"] else "Leave it", "", None, "safe", [], [], pile=True),
+        ]
+
+    def dig_view(self) -> dict | None:
+        d = self.dig
+        if not d or self.card != DIG:
             return None
+        return {"buried": [self._dig_name(t)[0] for t in d["loot"]] + ["👂"] * d["noise"],
+                "haul": [self._dig_name(t)[0] for t in d["haul"]],
+                "heard": d["heard"], "caught": DIG_CAUGHT}
 
-        for attempt in range(100):
-            gap = 1 if attempt < 90 else 0
-            taken: set[int] = set()
-            shapes = []
-            for kind, w, h in SIFT_TREASURES:
-                what = r.choice(SIFT_POOLS[kind]) if kind in SIFT_POOLS else ""
-                shapes.append({"kind": kind, "item": what, "cells": place(w, h, taken, gap), "trap": False, "done": False})
-            for kind, w, h in SIFT_TRAPS + SIFT_CAREERS:
-                shapes.append({"kind": kind, "item": "", "cells": place(w, h, taken, gap), "trap": True, "done": False,
-                               "loud_only": kind == "career"})
-            if all(s["cells"] for s in shapes):
-                break
-        self.sift = {"shapes": shapes, "open": [], "digs": 0, "how": None}
-
-    def _sift_shapes(self) -> list[dict]:
-        """The shapes in play: Careers only hide in the rubble if you dig loudly."""
-        sf = self.sift
-        return [s for s in sf["shapes"] if not s.get("loud_only") or sf["how"] == "loud"]
-
-    def _sift_at(self, i: int) -> dict | None:
-        return next((s for s in self._sift_shapes() if i in s["cells"]), None)
-
-    def _sift_name(self, s: dict) -> tuple[str, str]:
-        if s["trap"]:
-            return SIFT_TRAP_NAMES[s["kind"]]
-        if s["kind"] == "pack":
-            return "🎒", "a pack: 2 days of food"
-        if s["kind"] == "can":
-            return "🥫", "a can: a day of food"
-        return lore.item_emoji(s["item"]), ("a crate with a " if s["kind"] == "crate" else "a ") + lore.item_name(s["item"])
-
-    def _area(self, i: int, big: bool) -> list[int]:
-        if not big:
-            return [i]
-        n = SIFT_SIZE
-        x, y = i % n, i // n
-        return [(y + dy) * n + x + dx for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-                if 0 <= x + dx < n and 0 <= y + dy < n]
-
-    def _sift_options(self) -> list[dict]:
-        sf = self.sift
-        if sf["how"] is None:
-            out = []
-            if self.supplies >= 1:
-                out.append(self._opt(0, "Dig quietly", "Slow and careful. It takes all day.", None, "safe",
-                                     [f"{SIFT_DIGS['quiet']} digs"], ["a day of food"]))
-            out.append(self._opt(1, "Dig loudly", "Fast and noisy. Careers will come looking.", None, "bold",
-                                 [f"{SIFT_DIGS['loud']} digs"], ["Careers hide in the rubble"]))
-            return out
-        out = []
-        for i in range(SIFT_SIZE * SIFT_SIZE):
-            if i in sf["open"]:
-                continue
-            out.append(self._opt(SIFT_SMALL + i, "", "", None, "safe", [], [], dig=i, big=False))
-            out.append(self._opt(SIFT_BIG + i, "", "", None, "bold", [], [], dig=i, big=True))
-        out.append(self._opt(SIFT_STOP, "Stop digging", "Keep what you've found and get clear.", None, "safe", [], []))
-        return out
-
-    def sift_view(self) -> dict | None:
-        sf = self.sift
-        if not sf or self.card != SIFT:
-            return None
-        n = SIFT_SIZE
-        ids = {id(s): k for k, s in enumerate(sf["shapes"])}
-        tiles = []
-        for i in range(n * n):
-            if i not in sf["open"]:
-                tiles.append({"open": False})
-                continue
-            s = self._sift_at(i)
-            if not s:
-                tiles.append({"open": True})
-                continue
-            x, y = i % n, i // n
-            same = lambda j: j in s["cells"]  # noqa: E731
-            tiles.append({
-                "open": True, "shape": ids[id(s)], "icon": self._sift_name(s)[0], "trap": s["trap"], "done": s["done"],
-                # which sides are the treasure's outer edge, so you can read its size from a piece
-                "edge": "".join(c for c, j, ok in (("t", i - n, y > 0), ("r", i + 1, x < n - 1),
-                                                    ("b", i + n, y < n - 1), ("l", i - 1, x > 0))
-                                if not ok or not same(j)),
-            })
-        legend = []
-        for k, s in enumerate(self._sift_shapes()):
-            icon, name = self._sift_name(s)
-            xs = sorted({c % n for c in s["cells"]})
-            ys = sorted({c // n for c in s["cells"]})
-            # the size without its orientation: a piece's edges tell you which way it lies
-            legend.append({"shape": ids[id(s)], "icon": icon, "name": name, "w": max(len(xs), len(ys)), "h": min(len(xs), len(ys)),
-                           "trap": s["trap"], "done": s["done"],
-                           "found": sum(c in sf["open"] for c in s["cells"])})
-        return {"size": n, "digs": sf["digs"], "how": sf["how"], "tiles": tiles, "legend": legend}
-
-    def _resolve_sift(self, index: int) -> tuple:
-        sf = self.sift
-        if sf["how"] is None:
-            sf["how"] = ("quiet", "loud")[index]
-            sf["digs"] = SIFT_DIGS[sf["how"]] + (1 if "axe" in self.kit else 0)
-            if sf["how"] == "quiet":
-                self.supplies -= 1
-                self._say("You work slowly, lifting one plank at a time.", "result")
-            else:
-                self._say("You tear into the rubble with both hands. Anyone nearby can hear it.", "result")
-            return ("round", None)
-        if index == SIFT_STOP:
-            return self._end_sift()
-        big = index >= SIFT_BIG
-        tile = index - (SIFT_BIG if big else SIFT_SMALL)
-        sf["digs"] -= 1
-        dug = [i for i in self._area(tile, big) if i not in sf["open"]]
-        sf["open"].extend(dug)
-        touched = []
-        for i in dug:
-            s = self._sift_at(i)
-            if s and s not in touched:
-                touched.append(s)
-        got, hurt, pieces = [], [], []
-        for s in touched:
-            icon, name = self._sift_name(s)
-            if s["trap"]:
-                if s["done"]:
-                    continue
-                s["done"] = True
-                sf["open"].extend(c for c in s["cells"] if c not in sf["open"])  # it goes off: all of it shows
-                dmg, cause = SIFT_HURT[s["kind"]]
-                hurt.append(icon)
-                self._say({"snare": "A wire snaps tight around your wrist.",
-                           "mine": "The ground under the plank clicks.",
-                           "career": "A hand grabs your collar from behind the crate."}[s["kind"]], "result")
-                self._hurt(dmg, cause)
-                if self.over:
-                    return ()
-            elif all(c in sf["open"] for c in s["cells"]) and not s["done"]:
-                s["done"] = True
-                got.append(icon)
-                if s["kind"] in ("pack", "can"):
-                    self.supplies += 2 if s["kind"] == "pack" else 1
-                else:
-                    self._gain(s["item"])
-            elif not s["done"]:
-                pieces.append(icon)
-        if hurt:
-            label, ok, near = "HURT " + " ".join(hurt), False, False
-        elif got:
-            label, ok, near = "FOUND " + " ".join(got), True, False
-        elif pieces:
-            label, ok, near = "PART OF " + " ".join(pieces), False, True
+    def _resolve_dig(self, index: int) -> tuple:
+        d = self.dig
+        if index == DIG_LEAVE:
+            return self._end_dig()
+        slices = self._dig_slices()
+        roll = self._dice().randint(1, 100)
+        k = next(i for i, s in enumerate(slices) if s["a"] < roll <= s["b"])
+        chance = slices[len(d["loot"]) - 1]["b"] if d["loot"] else 0
+        ok = k < len(d["loot"])
+        if ok:
+            t = d["loot"].pop(k)
+            d["haul"].append(t)
+            icon, name = self._dig_name(t)
+            head = f"{icon} {name.split(' ', 1)[1].upper()}"
         else:
-            label, ok, near = "EMPTY", False, True
-        self._played("sift", ok, label, "", near=near)
-        if sf["digs"] <= 0:
-            return self._end_sift()
+            d["noise"] -= 1
+            d["heard"] += 1
+            head = "👂 NOISE"
+        self.log.append({"day": self.day, "kind": "roll", "text": f"{chance}% · rolled {roll}", "chance": chance,
+                         "roll": roll, "ok": ok, "near": False, "label": "Dig", "base": chance, "edges": [],
+                         "got": "", "near_zone": False, "slices": slices, "head": head,
+                         "note": "into your haul" if ok else f"{d['heard']} of {DIG_CAUGHT}"})
+        if not ok and d["heard"] >= DIG_CAUGHT:
+            lost = len(d["haul"])
+            self._say("Footsteps. A Career rounds the crate." + (" You drop it all and run." if lost else " You run."),
+                      "result")
+            d["haul"] = []
+            self._hurt(DIG_HIT, "a Career who heard you digging")
+            if self.over:
+                return ()
+            return self._end_dig(said=True)
+        if not ok:
+            self._say(NOISES[(d["heard"] + self.day) % len(NOISES)] + " Somewhere, someone stops to listen.", "result")
+        if not d["loot"]:
+            self._say("Nothing left worth having.", "result")
+            return self._end_dig()
         return ("round", None)
 
-    def _end_sift(self, dug: bool = True) -> tuple:
-        half = [self._sift_name(s)[1] for s in self._sift_shapes()
-                if not s["trap"] and not s["done"] and any(c in self.sift["open"] for c in s["cells"])]
-        self.sift = None
+    def _end_dig(self, said: bool = False) -> tuple:
+        haul = self.dig["haul"]
+        self.dig = None
         self.card = ""
-        if dug:
-            self._say(f"You leave {' and '.join(half)} half dug." if half else "You leave the rubble behind.", "result")
+        if haul and not said:
+            self._say("You get clear with " + _join([self._dig_name(t)[1] for t in haul]) + ".", "result")
+        elif not said:
+            self._say("You leave the rubble be.", "result")
+        for t in haul:
+            if t["kind"] in ("pack", "can"):
+                self.supplies += 2 if t["kind"] == "pack" else 1
+            else:
+                self._gain(t["item"])
         card = self._place_card("horn")
         if card:
             return ("draw", card)
