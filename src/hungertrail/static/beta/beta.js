@@ -168,6 +168,7 @@ function enterGame(v) {
 // Tap a kit slot: what it does, and a Use button when it can be used right now.
 function slotInfo(k, s) {
   const pop = $("#slotpop");
+  pop.className = "";
   const usable = s.can_use === k.id && !busy;
   pop.replaceChildren(
     el("p", {}, el("b", { text: `${k.emoji} ${k.name}` }), " " + k.desc),
@@ -179,6 +180,7 @@ function slotInfo(k, s) {
 // The sponsors: the crowd's stars pay for a parachute, which drops that night.
 function openSponsors(s) {
   const pop = $("#slotpop");
+  pop.className = "";
   const rows = s.menu.map((m) => {
     const b = el("button", { class: "buy", onclick: () => { pop.hidden = true; send(m.index, null); } },
       el("span", { class: "bname", text: `${m.icon} ${m.label}` }),
@@ -254,7 +256,7 @@ function statusBar(s) {
         title: "The crowd's stars: spend them on sponsor gifts", onclick: () => openSponsors(view.status) },
         "⭐ ", el("b", { text: s.stars }), s.order ? el("small", { text: " 🪂 tonight" }) : null),
       whoEl,
-      el("button", { class: "mute", title: "Sound", text: Sound.on() ? "🔊" : "🔇", onclick: (e) => { Sound.toggle(); e.target.textContent = Sound.on() ? "🔊" : "🔇"; } })),
+      el("button", { class: "mute", title: "Settings", text: "⚙️", onclick: () => openSettings(true) })),
     el("div", { class: "row2" }, hp, food, el("span", { class: "kit" }, ...slots)),
   ];
 }
@@ -670,7 +672,7 @@ function showResults(v) {
       el("span", {}, el("b", { text: r.kills }), r.kills === 1 ? " kill" : " kills"),
       el("span", {}, "Day ", el("b", { text: r.day })),
       el("span", {}, el("b", { text: r.score.toLocaleString() }), ` pts (×${r.multiplier})`)),
-    el("p", { class: "cause", text: r.won ? "Won the Hunger Games." : "Killed by " + r.cause + "." }),
+    el("p", { class: "cause", text: r.won ? "Won the Hunger Games." : r.cause === "giving up" ? "Gave up." : "Killed by " + r.cause + "." }),
     !r.won && r.recap ? el("p", { class: "recap dim", text: r.recap }) : null,
   ].filter(Boolean)
   );
@@ -739,6 +741,49 @@ function tickCountdown() {
   if (left === 0) setTimeout(() => location.reload(), 1500);
 }
 
+// ------------------------------------------------------------------ settings
+// From the game: sound, back to the title (the run is saved), and a way out of the run. A practice
+// run restarts; a daily run can only be given up, and that counts as a loss, so it can't dodge a
+// bad day. From the title: sound, and clearing what this device has saved.
+function confirmButton(label, sure, act) {
+  const b = el("button", { class: "danger", text: label });
+  let armed = false;
+  b.onclick = () => {
+    if (!armed) { armed = true; b.textContent = sure; b.classList.add("armed"); return; }
+    act();
+  };
+  return b;
+}
+
+function openSettings(inGame) {
+  const pop = $("#slotpop");
+  const close = () => (pop.hidden = true);
+  const sound = el("button", { text: "Sound: " + (Sound.on() ? "on" : "off") });
+  sound.onclick = () => { Sound.toggle(); sound.textContent = "Sound: " + (Sound.on() ? "on" : "off"); };
+  const rows = [el("p", {}, el("b", { text: "Settings" })), sound];
+  if (inGame && view && !view.over) {
+    rows.push(el("button", { text: "Main menu (your run is saved)", onclick: () => { close(); refreshTitle(); show("title"); } }));
+    if (view.mode === "practice") {
+      rows.push(confirmButton("Restart this practice run", "Tap again to restart", () => {
+        close(); store.del("practice"); openReaping("practice");
+      }));
+    } else {
+      rows.push(el("p", { class: "dim small", text: "Giving up ends today's run as a loss, right where you are. You can't play today's arena again." }));
+      rows.push(confirmButton("Give up today's run", "Tap again to give up", () => { close(); send(98, null); }));
+    }
+  } else if (!inGame) {
+    rows.push(el("p", { class: "dim small", text: "Clears this device's saved runs, tips and nickname. Use it if a run is stuck." }));
+    rows.push(confirmButton("Reset this device", "Tap again to reset", () => {
+      Object.keys(localStorage).filter((k) => k.startsWith("htb.")).forEach((k) => localStorage.removeItem(k));
+      close(); refreshTitle(); toast("Reset. Everything saved on this device is gone.");
+    }));
+  }
+  rows.push(el("button", { text: "Close", onclick: close }));
+  pop.replaceChildren(...rows);
+  pop.className = "settings";
+  pop.hidden = false;
+}
+
 // ------------------------------------------------------------------ wiring
 async function resume(rec, fallback) {
   try {
@@ -762,6 +807,7 @@ $("#btn-again").onclick = () => { store.del("practice"); openReaping("practice")
 $("#btn-board").onclick = openBoard;
 $("#btn-results-board").onclick = openBoard;
 $("#btn-help").onclick = () => show("help");
+$("#btn-settings").onclick = () => openSettings(false);
 $("#btn-start").onclick = startRun;
 $("#log").addEventListener("pointerdown", skipAnimation);
 $("#btn-share").onclick = share;

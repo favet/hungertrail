@@ -24,6 +24,9 @@
 #slotpop .buy .bprice { color: var(--gold); white-space: nowrap; }
 #slotpop .buy:disabled .bprice { color: var(--dim); }
 #slotpop .small { font-size: 12px; }
+#slotpop.settings button { flex: 1 1 100%; }
+#slotpop .danger { color: var(--bad); border-color: #5a2a22; }
+#slotpop .danger.armed { background: var(--bad); color: #1a0d05; border-color: var(--bad); }
 .option.locked { opacity: 0.5; border-style: dashed; cursor: default; }
 .option.locked .key { color: var(--dim); }
 .entry.twist { color: var(--gold); border: 1px solid var(--gold); padding: 0.3rem 0.5rem; font-size: 0.9rem; }

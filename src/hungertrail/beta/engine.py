@@ -55,6 +55,8 @@ HIDE_HEAL = 25
 EDGE_WATCHED = 5  # from this day, any day at the edge brings the Gamemakers
 EDGE_CLOSES = 6  # from this day the edge places are gone
 USE = 99  # choice index for tapping the medkit in your kit
+QUIT = 98  # choice index for giving up the run from the settings menu: it ends as a loss
+GAVE_UP = "giving up"
 BUY = 500  # choice index BUY + k: order SPONSOR_MENU[k] from the sponsors
 
 # The crowd: stars from 0 to 5. Long shots that land and kills earn them, walking away costs one,
@@ -393,6 +395,8 @@ class Game:
             raise ValueError("run is over")
         if index == USE:
             return self._use_medkit()
+        if index == QUIT:
+            return self._give_up()
         if BUY <= index < BUY + len(SPONSOR_MENU):
             return self._buy(index - BUY)
         valid = {o["index"]: o for o in self.options()}
@@ -426,6 +430,13 @@ class Game:
                 self._say(dest[1], "round")  # the next round, after this round's result
             return
         self._advance(dest)
+
+    def _give_up(self) -> None:
+        """Quit from the settings menu. A daily run you give up on counts as a loss where you stand."""
+        self.steps += 1
+        self._say("Give up", "choice")
+        self._die(GAVE_UP)
+        self.recap = f"You gave up on day {self.day} with {self.remaining} tributes left."
 
     def _use_medkit(self) -> None:
         if not self.can_use_medkit():

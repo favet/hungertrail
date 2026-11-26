@@ -114,7 +114,8 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
     if game.won:
         line, end = f"👑 VICTOR · {kills} · Day {game.day}", "Won the Hunger Games."
     else:
-        line, end = f"Placed {ordinal(game.placement)} of 24 · {kills} · Day {game.day}", f"Killed by {game.cause}"
+        line, end = f"Placed {ordinal(game.placement)} of 24 · {kills} · Day {game.day}", (
+            "Gave up." if game.cause == "giving up" else f"Killed by {game.cause}")
     mult = lore.multiplier(game.district)
     share = "\n".join([f"{title} · District {game.district} (×{mult})", line, game.emoji_row(), end, "beta.hungertrail.com"])
     return {

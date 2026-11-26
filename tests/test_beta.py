@@ -229,6 +229,17 @@ def test_walking_away_costs_a_star():
     raise AssertionError("no walk-away card")
 
 
+def test_giving_up_ends_the_run_as_a_loss():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    left = g.remaining
+    g.choose(engine.QUIT)
+    assert g.over and not g.won and g.cause == engine.GAVE_UP and g.placement == left
+    assert g.recap.startswith("You gave up on day 2") and g.score() > 0
+    with pytest.raises(ValueError):
+        g.choose(engine.QUIT)
+
+
 def test_final_fight_runs_on_health():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
