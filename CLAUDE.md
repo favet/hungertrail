@@ -43,7 +43,7 @@ are in `beta/minigames.py`. Beta event cards need a `place`; the header of `beta
 documents the schema. An option with `minigame: hide` is played, not rolled. Every roll goes
 through `_reveal`, which logs it for the wheel (`static/beta/wheel.js`). The daily script (nemesis
 days and places, finale, twist, place menus) lives in `Arena`. Bump `VERSION` in `beta/runs.py`
-when a change would alter runs in progress.
+when a change would alter runs in progress, and `RELEASE` (shown on the title screen) for each new beta.
 
 Beta minigames are replayed: the browser sends input ticks, the server reruns the same integer
 simulation. `beta/minigames.py` and `static/beta/minigames.js` must stay in step

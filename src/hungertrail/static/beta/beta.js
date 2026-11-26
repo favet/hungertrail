@@ -124,7 +124,7 @@ function chooseDistrict(id) {
 
 function openReaping(m) {
   mode = m;
-  $("#reaping-title").textContent = m === "daily" ? `The Reaping · β #${daily.number}` : "The Reaping · Practice";
+  $("#reaping-title").textContent = m === "daily" ? `The Reaping · Arena #${daily.number}` : "The Reaping · Practice";
   buildReaping();
   show("reaping");
 }
@@ -663,7 +663,7 @@ function showResults(v) {
   Art.render(art, r.won ? "victory" : "tomb", v.number);
   $("#card").replaceChildren(...[
     art,
-    el("p", { class: "kicker", text: v.mode === "daily" ? `Hunger Trail Beta #${v.number} · District ${r.district}` : `Practice · District ${r.district}` }),
+    el("p", { class: "kicker", text: v.mode === "daily" ? `Arena #${v.number} · District ${r.district}` : `Practice · District ${r.district}` }),
     el("h2", { class: "place" + (r.won ? " won" : ""), text: r.won ? "VICTOR" : r.placement_text }),
     el("p", { class: "emoji", text: r.emoji }),
     el("div", { class: "facts" },
@@ -714,7 +714,7 @@ async function submitScore() {
 // ------------------------------------------------------------------ leaderboard
 async function openBoard() {
   show("board");
-  $("#board-date").textContent = `Hunger Trail β #${daily.number}`;
+  $("#board-date").textContent = `${CFG.release} · Arena #${daily.number}`;
   const rows = $("#board-rows");
   rows.replaceChildren(el("p", { class: "dim", text: "Reading the names..." }));
   try {

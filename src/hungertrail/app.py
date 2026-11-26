@@ -55,8 +55,10 @@ def _beta_page(request: Request):
         "districts": [{"id": k, "name": v, "perk": beta_lore.PERKS[k][0], "desc": beta_lore.PERKS[k][1],
                        "mult": beta_lore.multiplier(k)} for k, v in beta_lore.DISTRICTS.items()],
         "names": beta_lore.DEFAULT_NAMES,
+        "release": beta_runs.RELEASE,
     }
-    return templates.TemplateResponse(request, "beta.html", {"config": config, "daily": info, "v": STATIC_VERSION})
+    return templates.TemplateResponse(request, "beta.html", {"config": config, "daily": info, "v": STATIC_VERSION,
+                                                            "release": beta_runs.RELEASE})
 
 
 @app.get("/beta", response_class=HTMLResponse)

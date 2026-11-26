@@ -18,6 +18,7 @@ from . import lore
 from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
+RELEASE = "Beta 4"  # the name on the title screen, so a tester can tell which beta is live
 VERSION = "b6"  # b6: the nemesis arc (wounds, study, last fight), softer damage, food cap, honest chips
 
 
@@ -108,7 +109,7 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
     if not game.over:
         return None
     number = daily_for(settings, date.fromisoformat(p["d"])).number
-    title = f"HUNGER TRAIL β #{number}" if p["m"] == "daily" else "HUNGER TRAIL β (practice)"
+    title = f"HUNGER TRAIL β · Arena #{number}" if p["m"] == "daily" else "HUNGER TRAIL β (practice)"
     kills = f"{game.kills} kill{'s' if game.kills != 1 else ''}"
     if game.won:
         line, end = f"👑 VICTOR · {kills} · Day {game.day}", "Won the Hunger Games."

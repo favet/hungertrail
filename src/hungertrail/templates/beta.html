@@ -7,7 +7,7 @@
   <meta name="robots" content="noindex">
   <title>Hunger Trail β</title>
   <meta name="description" content="The Hunger Trail beta. 24 tributes. One arena. Five minutes.">
-  <meta property="og:title" content="Hunger Trail β #{{ daily.number }}">
+  <meta property="og:title" content="Hunger Trail {{ release }} · Arena #{{ daily.number }}">
   <meta property="og:description" content="The beta arena. Test it before everyone else.">
   <meta property="og:image" content="https://hungertrail.com/static/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -24,7 +24,7 @@
     <section id="title" class="screen">
       <div class="scene" data-art="title"></div>
       <h1 class="logo">HUNGER<br>TRAIL <span class="beta-tag">β</span></h1>
-      <p class="kicker">Beta #{{ daily.number }} · <span id="title-date"></span></p>
+      <p class="kicker">{{ release }} · Arena #{{ daily.number }} · <span id="title-date"></span></p>
       <p class="tagline">24 tributes enter the arena.<br>One comes home.</p>
       <div class="menu">
         <button id="btn-daily" class="big primary">Enter today's arena</button>
