@@ -15,7 +15,7 @@ from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, SIFT
                                      Game, cards, new_setup, replay)
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
-KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies", "target_dies"}
+KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies", "target_dies", "wound", "study"}
 KNOWN_NEEDS = {"item", "any", "perk", "ally", "supplies"}
 
 
@@ -235,7 +235,7 @@ def test_final_fight_runs_on_health():
     g.kit = ["bow", "rope"]
     g.allies = []
     g._start_duel()
-    assert g.card == DUEL and g.opponent_id == g.nemesis and g.remaining == 2 and g.opp_health == 100
+    assert g.card == DUEL and g.opponent_id == g.nemesis and g.remaining == 2 and g.opp_health == engine.OPPONENT_HEALTH["nemesis"]
     press, hold = g.options()
     assert press["minigame"]["game"] == "fight" and "Your bow" in press["hint"] and "Rope" in hold["hint"]
     # Rope widens the block; the same exchange has the same tell whichever stance you pick.
@@ -243,7 +243,7 @@ def test_final_fight_runs_on_health():
     assert hold["minigame"]["block"][1] - hold["minigame"]["block"][0] > press["minigame"]["block"][1] - press["minigame"]["block"][0]
     p = press["minigame"]
     g.choose(0, [p["block"][0], p["side"], p["open"][0]])  # a clean block, then a strike
-    assert g.opp_health == 100 - g._fight_deal("aggressive") + 0 or g.over
+    assert g.opp_health == engine.OPPONENT_HEALTH["nemesis"] - g._fight_deal("aggressive") or g.over
     assert g.log[-2]["kind"] in ("roll", "result")
     health = g.health
     p = g.options()[1]["minigame"]
@@ -456,6 +456,175 @@ def test_death_recap():
     g.choose(5)  # a horn grab at 1 health
     if not g.won and g.over:
         assert g.recap and "1 health" in g.recap
+
+# ---------------------------------------------------------------- beta 4 rules
+
+
+def _value(e: dict) -> float:
+    """A rough worth of an outcome, the same yardstick the card audit uses."""
+    h = e.get("health", 0)
+    v = h if h > 0 else -Game._card_damage(h)
+    v += 12 * e.get("supplies", 0) + 20 * len(Game._list(e.get("add"))) - 20 * len(Game._list(e.get("remove")))
+    v += 25 * bool(e.get("sponsor")) + 20 * bool(e.get("gift")) + 15 * e.get("kill", 0)
+    v += 20 * (e.get("ally") == "joins_partner") - 25 * (e.get("ally") in ("dies", "lost"))
+    v += e.get("wound", 0) + 15 * bool(e.get("study")) - 200 * bool(e.get("die"))
+    return v
+
+
+def test_every_roll_is_worth_taking():
+    """A gamble's win beats every free option on the card, or nobody should take it."""
+    for cid, c in cards().items():
+        free = [_value(o.get("effects") or {}) for o in c["options"] if "roll" not in o and not o.get("need")]
+        for o in c["options"]:
+            if "roll" in o and free:
+                assert _value(o["success"].get("effects") or {}) > max(free), (cid, o["label"])
+
+
+def test_safe_means_safe():
+    """A safe or hiding option that misses leaves a tribute at 60 health standing."""
+    for cid, c in cards().items():
+        for o in c["options"]:
+            if o.get("tag") in ("safe", "hide") and "roll" in o:
+                f = o["fail"].get("effects") or {}
+                assert not f.get("die") and Game._card_damage(f.get("health", 0)) < 60, (cid, o["label"])
+
+
+def test_no_single_hit_kills_a_healthy_tribute():
+    assert engine.HIT_CAP < 70
+    for cid, c in cards().items():
+        for o in c["options"]:
+            for b in ([o.get("success"), o.get("fail")] if "roll" in o else [o]):
+                e = b.get("effects") or {}
+                assert Game._card_damage(e.get("health", 0)) < 70 or e.get("die"), (cid, o["label"])
+
+
+def test_food_has_a_cap_and_the_chips_say_so():
+    g = Game(5, 9, SETUP)
+    g.supplies = 10
+    assert g.supplies == engine.SUPPLY_CAP
+    g.supplies = -3
+    assert g.supplies == 0
+    g.supplies = engine.SUPPLY_CAP - 1
+    assert g._chips({"supplies": 3}) == [engine.food(1)]
+    g.supplies = engine.SUPPLY_CAP
+    assert g._chips({"supplies": 2}) == ["your pack is full of food"]
+    assert g._chips({"supplies": -1}) == [engine.food(-1)]
+
+
+def test_heal_chips_show_what_you_really_gain():
+    g = Game(5, 9, SETUP)
+    g.health = 90
+    assert g._chips({"health": 30}) == [engine.hp(10)]
+    g.health = 100
+    assert g._chips({"health": 30}) == ["you're already healthy"]
+
+
+def test_sponsors_send_what_you_are_missing():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.kit, g.health, g.supplies = ["medkit", "rope", "knife"], 100, engine.SUPPLY_CAP
+    stars = g.stars
+    g._gift()
+    assert g.supplies == engine.SUPPLY_CAP and g.kit == ["medkit", "rope", "knife"] and g.stars >= stars
+    g.health = 50
+    g._gift()
+    assert g.health == 80
+
+
+def test_a_second_copy_stays_where_it_is():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.kit = ["knife", "rope", "bow"]
+    g._gain("knife")
+    g._advance(("night",))
+    assert g.card != SWAP and g.kit == ["knife", "rope", "bow"]
+    assert any("already carry" in e["text"] for e in g.log)
+
+
+def test_your_ally_takes_one_killing_blow_for_you():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.allies = ["Rue"]
+    g.health = 30
+    g._hurt(50, "a Career's spear")
+    assert g.health == 30 and g.allies == [] and g.saved and "Rue" in g.fallen_today
+    g.allies = ["Thresh"]
+    g._hurt(50, "a Career's spear")
+    assert g.health <= 0 and g.allies == ["Thresh"]  # only once a run
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.allies, g.health = ["Rue"], 10
+    g._hurt(20, "starvation")  # nobody can eat for you
+    assert g.allies == ["Rue"] and g.health <= 0
+
+
+def test_wounds_carry_into_the_final_fight():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    chip = g._chips({"wound": 25})
+    assert any("final fight" in c for c in chip)
+    g._apply({"wound": 25}, cards()["nemesis_clash"])
+    assert g.wounds == 25 and "🎯" in g.days[g.day]
+    g.allies = []
+    g._start_duel()
+    assert g.opponent_id == g.nemesis and g.opp_health == engine.OPPONENT_HEALTH["nemesis"] - 25
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.wounds, g.allies = 500, []
+    g._start_duel()
+    assert g.opp_health == engine.NEMESIS_FLOOR  # wounds weaken them; only you finish them
+
+
+def test_a_kill_that_can_only_fall_on_the_nemesis_wounds_them():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.pool = [g.nemesis]
+    g.target = None
+    g._kill(1)
+    assert g.nemesis in g.pool and g.wounds == 30
+
+
+def test_studying_the_nemesis_reads_their_feints():
+    plain = sum(mg.fight_params(random.Random(i), "careful", True, False, 0)["feint"] >= 0 for i in range(2000))
+    read = sum(mg.fight_params(random.Random(i), "careful", True, False, 0, read=True)["feint"] >= 0 for i in range(2000))
+    assert read < plain * 0.65
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g._apply({"study": True}, cards()["nemesis_sighting"])
+    assert g.study and not g._chips({"study": True})  # you only learn it once
+
+
+def test_the_snare_needs_rope():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.card, g.target = "nemesis_clash", None
+    snare = [o for o in g.options() if o["label"] == "Lead them into your snare"]
+    g.kit = ["rope"]
+    with_rope = [o for o in g.options() if o["label"] == "Lead them into your snare"]
+    assert with_rope and (not snare or snare[0].get("locked"))
+
+
+def test_every_gamble_says_what_you_win():
+    """A roll or a minigame never shows an empty win side: getting away clean says so."""
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.health, g.supplies, g.kit, g.allies = 70, 3, [], ["Rue"]
+    for cid, c in cards().items():
+        if c["kind"] not in ("event", "gamemaker", "feast", "finale"):
+            continue
+        g.card = cid
+        g.target = g._pick_target(c) if c.get("target") else None
+        for o in g.options():
+            if o["chance"] is not None or o.get("minigame"):
+                assert o["win"], (cid, o["label"])
+
+
+def test_scores_spread_out():
+    """Two tributes who did different things rarely tie: no score covers 8% of runs."""
+    from collections import Counter
+    scores = Counter(play(BOTS["smart"], seed).score() for seed in range(400))
+    assert scores.most_common(1)[0][1] < 0.08 * 400, scores.most_common(3)
+
 
 client = TestClient(app)
 

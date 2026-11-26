@@ -38,15 +38,18 @@ from . import minigames as mg
 
 START_TRIBUTES = 24
 MAX_DAYS = 8
-DAMAGE = 3.2  # global lethality dial for card damage, tuned with the bots
-HIT_CAP = 85  # no single card hit is bigger than this, so one miss never kills from full health
+DAMAGE = 2.0  # global lethality dial for card damage, tuned with the bots
+HIT_CAP = 65  # no single card hit is bigger than this, so one miss never kills a tribute at 66+ health
+SUPPLY_CAP = 6  # days of food you can carry: past this, food is left behind
+# The nemesis arc: every wound you give them comes off their health in the final fight, down to a floor.
+NEMESIS_FLOOR = 40
 NEAR = 10  # a failed roll this close to the target is a near miss
 # The final fight. stance: (damage your strike deals, damage you take if you don't block)
 FIGHT = {"aggressive": (26, 30), "careful": (14, 18)}
 FIGHT_NEMESIS_HIT = 8  # the nemesis hits harder
 FIGHT_PER_KILL, FIGHT_KILLS_CAP = 4, 12  # your kills make your strikes count
 FIGHT_TIRED = 10  # from this exchange on, every blow counts double: nobody fights forever
-OPPONENT_HEALTH = {"nemesis": 100, "other": 70}
+OPPONENT_HEALTH = {"nemesis": 125, "other": 70}  # the nemesis is the last fight: wounds and study bring them down
 OPEN_GIFT = 55  # odds a sponsor pays when you go out in the open
 HIDE_HEAL = 25
 EDGE_WATCHED = 5  # from this day, any day at the edge brings the Gamemakers
@@ -290,6 +293,10 @@ class Game:
         self.hits: list[tuple[int, int, str]] = []  # (day, damage, cause), for the death recap
         self.kills_today = 0
         self.killed: set[str] = set()
+        self.wounds = 0  # what you've taken off the nemesis before the final fight
+        self.study = False  # you've watched the nemesis fight: you see their feints coming
+        self.saved = False  # your ally has taken a killing blow for you (once a run)
+        self.clean = 0  # minigames played cleanly: a catch, a hit, holding still, a find, a block
 
         r = _rng(seed, "allies", self.district)
         for _ in self.ally_names:
@@ -305,6 +312,14 @@ class Game:
         )
 
     # ------------------------------------------------------------------ public API
+    @property
+    def supplies(self) -> int:
+        return self._supplies
+
+    @supplies.setter
+    def supplies(self, n: int) -> None:
+        self._supplies = max(0, min(SUPPLY_CAP, n))
+
     @property
     def remaining(self) -> int:
         return 1 + len(self.pool) + len(self.allies) + self.reserved_allies
@@ -334,6 +349,10 @@ class Game:
             if "roll" in o:
                 win = self._chips(o["success"].get("effects", {}))
                 lose = self._chips(o["fail"].get("effects", {}), card)
+                if not win and (o["fail"].get("effects") or {}).get("health", 0) < 0:
+                    win = ["you get away unhurt"]  # getting out clean is the prize
+                if not win and (o["fail"].get("effects") or {}).get("ally") == "dies" and self.allies:
+                    win = [f"{self.allies[0]} pulls through"]
                 if o.get("minigame") == "hide":
                     out.append(self._opt(i, o["label"], o.get("hint", "") or "Hold to stay down. Let go to breathe.", None,
                                          o.get("tag", "safe"), win, lose, minigame=self._hide_params(card["id"], o["roll"]["base"])))
@@ -441,11 +460,16 @@ class Game:
     def _chips(self, e: dict, card: dict | None = None) -> list[str]:
         out = []
         if "health" in e:
-            n = e["health"] if e["health"] > 0 else -self._card_damage(e["health"])
-            if n > -self.health:  # a hit that would kill you says so instead, below
-                out.append(hp(n))
+            if e["health"] > 0:  # a heal shows what you'd really gain
+                n = min(e["health"], 100 - self.health)
+                out.append(hp(n) if n else "you're already healthy")
+            else:
+                n = -self._card_damage(e["health"])
+                if n > -self.health:  # a hit that would kill you says so instead, below
+                    out.append(hp(n))
         if e.get("supplies"):
-            out.append(food(e["supplies"]))
+            n = e["supplies"] if e["supplies"] < 0 else min(e["supplies"], SUPPLY_CAP - self.supplies)
+            out.append(food(n) if n else "your pack is full of food")
         for item in self._list(e.get("add")):
             out.append(f"a {lore.item_name(item)}" if item != "iodine" else "iodine")
         for item in self._list(e.get("remove")):
@@ -457,13 +481,21 @@ class Game:
             out.append("a find")
         if e.get("kill"):
             out.append("a kill")
+        if e.get("wound") and self.nemesis in self.pool:
+            out.append(f"wound {self.nemesis_name}: −{e['wound']} in the final fight")
+        if e.get("study") and not self.study:
+            out.append(f"learn {self.nemesis_name}'s feint")
         if e.get("ally") in ("dies", "lost") and self.allies:
             out.append(f"lose {self.allies[0]}")
         if e.get("ally") == "joins_partner":
             out.append(f"{self.partner} joins you")
         if e.get("die") or ("health" in e and e["health"] < 0 and self._card_damage(e["health"]) >= self.health):
             out.append(DEADLY)
-        return out
+        if not out and e.get("next") == DUEL:
+            out.append("you reach the final fight unhurt")
+        # "Nothing to gain here" only matters when it's the whole story.
+        full = ("you're already healthy", "your pack is full of food")
+        return [c for c in out if c not in full] or out
 
     def _near_ok(self, dmg: int) -> bool:
         """A close call halves the damage. It only counts when half the damage leaves you standing."""
@@ -563,6 +595,9 @@ class Game:
 
     # ------------------------------------------------------------------ kit
     def _gain(self, item: str) -> None:
+        if item in self.kit and item != "medkit":
+            self._say(f"You already carry a {lore.item_name(item)}. You leave this one.", "result")
+            return
         if len(self.kit) < lore.KIT_SLOTS:
             self.kit.append(item)
         elif self.pending_item is None:
@@ -849,7 +884,8 @@ class Game:
                 extra["minigame"] = self._fish_params()
                 hint = "Fish for your supper. Water and food. Everyone else needs it too."
             elif key == "rocks":
-                win, lose = [hp(self._hide_heal())], [food(-1)]
+                heal = min(self._hide_heal(), 100 - self.health)
+                win, lose = [hp(heal) if heal else "you're already healthy"], [food(-1)]
             elif key == "ridge":
                 if any(w in self.kit for w in lore.HUNTERS):
                     hunt = self._hunt_params()
@@ -867,6 +903,8 @@ class Game:
                 win, lose = ["+2 stars, likely"], ["you'll be seen"]
             else:  # feast
                 win, lose = ["what you need most"], ["everyone will be there"]
+            if key in ("stream", "ridge") and self.supplies >= SUPPLY_CAP:
+                win = ["your pack is full of food"]
             if key in EDGE and self._refuge_open(key):
                 lose = lose + [f"the last quiet place: {FINALES[self.arena.finale]['why']}"]
             elif key in EDGE:
@@ -975,6 +1013,7 @@ class Game:
     # ------------------------------------------------------------------ minigames
     def _played(self, game: str, ok: bool, label: str, note: str, near: bool = False) -> None:
         """Log a minigame's result where the roll reveal goes. near shows it amber: no harm done."""
+        self.clean += 1 if ok else 0
         self.log.append({"day": self.day, "kind": "roll", "game": game, "ok": ok, "near": near,
                          "label": label, "note": note, "chance": None, "text": f"{label} · {note}"})
 
@@ -1187,18 +1226,21 @@ class Game:
 
     # ------------------------------------------------------------------ the end
     def _start_duel(self) -> None:
-        # Everyone but you and one rival goes. Your ally first (only one can win), then the nemesis.
-        if self.allies:
-            self.opponent_id = self.opponent = self.allies[0]
-        elif self.nemesis in self.pool:
+        # Everyone but you and one rival goes. The nemesis is the day's last fight if they're alive: an ally
+        # who's still with you dies at their hands on the horn. Otherwise your ally (only one can win).
+        if self.nemesis in self.pool:
             self.opponent_id = self.nemesis
             self.opponent = f"{self.nemesis_name} ({self.nemesis[4:]})"
+        elif self.allies:
+            self.opponent_id = self.opponent = self.allies[0]
         elif self.pool:
             self.opponent_id = self.pool[-1]
             self.opponent = self._name(self.pool[-1])
         else:
             self.opponent_id = self.opponent = "the last Career"
-        self.opp_max = self.opp_health = OPPONENT_HEALTH["nemesis" if self.opponent_id == self.nemesis else "other"]
+        boss = self.opponent_id == self.nemesis
+        self.opp_max = OPPONENT_HEALTH["nemesis" if boss else "other"]
+        self.opp_health = self._nemesis_health() if boss else self.opp_max
         rest = [t for t in self.pool if t != self.opponent_id]
         rest_allies = [a for a in self.allies if a != self.opponent_id]
         self.pool = [t for t in self.pool if t == self.opponent_id]
@@ -1210,11 +1252,20 @@ class Game:
             if self.nemesis in gone:
                 line += f" One of them is {self.nemesis_name}."
             self._say(line, "cannon")
+            if boss and rest_allies:
+                name = " and ".join(rest_allies)
+                self._say(f"{name} reached the horn with you. {self.nemesis_name[0].upper() + self.nemesis_name[1:]} "
+                          f"got there first. {name} is gone, and it's just the two of you now.", "story")
         self.card = DUEL
         self.exchanges = 0
         self.days[self.day].append("⚔️")
+        scars = ""
+        if boss and self.wounds:
+            scars = " Your work this week shows: they're still bleeding from the wounds you gave them."
+        if boss and self.study:
+            scars += " You've watched them fight. You know the feint."
         self._say(f"Two tributes left. You, and {self.opponent}, face to face on the horn. You have {self.health} "
-                  f"health. They have {self.opp_health}. Watch which side they wind up on, and block it.", "event")
+                  f"health. They have {self.opp_health}.{scars} Watch which side they wind up on, and block it.", "event")
 
     def _weapon(self) -> str | None:
         weapons = [w for w in self.kit if w in lore.WEAPONS]
@@ -1232,8 +1283,9 @@ class Game:
 
     def _fight_params(self, stance: str) -> dict:
         w = self._weapon()
-        return mg.fight_params(_rng(self.salt, "fight", self.exchanges), stance, self.opponent_id == self.nemesis,
-                               "rope" in self.kit, lore.WEAPONS[w] if w else 0, self.exchanges)
+        boss = self.opponent_id == self.nemesis
+        return mg.fight_params(_rng(self.salt, "fight", self.exchanges), stance, boss,
+                               "rope" in self.kit, lore.WEAPONS[w] if w else 0, self.exchanges, read=boss and self.study)
 
     def _duel_options(self) -> list[dict]:
         out = []
@@ -1308,6 +1360,11 @@ class Game:
             ally = None
         if kills:
             self._kill(kills)
+        if e.get("wound"):
+            self._wound(e["wound"])
+        if e.get("study") and not self.study:
+            self.study = True
+            self._say(f"You know how {self.nemesis_name} fights now. In the final fight, their feints won't fool you as often.", "story")
         if e.get("target_dies"):
             self._kill(1, mine=False)
         if e.get("partner_dies") and "partner" in self.pool:
@@ -1347,6 +1404,9 @@ class Game:
                 if not victims:
                     return
                 v = victims[0]
+                if v == self.nemesis and mine:
+                    self._wound(30)
+                    continue
             self.pool.remove(v)
             self.fallen_today.append(v)
             if mine:
@@ -1362,6 +1422,20 @@ class Game:
         if mine and "⚔️" not in self.days[self.day]:
             self.days[self.day].append("⚔️")
 
+    def _wound(self, n: int) -> None:
+        if self.nemesis not in self.pool:
+            return
+        self.wounds += n
+        name = self.nemesis_name[0].upper() + self.nemesis_name[1:]
+        left = self._nemesis_health()
+        self._say(f"{name} is wounded. If you meet in the final fight, they start with {left} health, not "
+                  f"{OPPONENT_HEALTH['nemesis']}.", "story")
+        if "🎯" not in self.days[self.day]:
+            self.days[self.day].append("🎯")
+
+    def _nemesis_health(self) -> int:
+        return max(NEMESIS_FLOOR, OPPONENT_HEALTH["nemesis"] - self.wounds)
+
     def _gift(self) -> None:
         if self.health < 50:
             self.health = min(100, self.health + 30)
@@ -1375,9 +1449,18 @@ class Game:
         elif "medkit" not in self.kit and len(self.kit) < lore.KIT_SLOTS:
             self.kit.append("medkit")
             what = "a medkit"
-        else:
+        elif self.health < 100:
+            self.health = min(100, self.health + 30)
+            what = "medicine"
+        elif "rope" not in self.kit and len(self.kit) < lore.KIT_SLOTS:
+            self.kit.append("rope")
+            what = "a coil of rope"
+        elif self.supplies < SUPPLY_CAP:
             self.supplies += 2
             what = "a hot meal"
+        else:
+            self._crowd(1, "The sponsors have nothing you need. They send a note instead: the Capitol loves you.")
+            what = "a note: \"Keep going.\""
         self.days[self.day].append("🎁")
         self._say(f"A silver parachute drifts down: {what}.", "gift")
 
@@ -1433,6 +1516,15 @@ class Game:
         return n // 2 if self.district == 12 else n
 
     def _hurt(self, n: int, cause: str) -> None:
+        if (n >= self.health and self.allies and not self.saved and cause != "starvation"
+                and self.card != DUEL and self.health > 0):
+            self.saved = True
+            name = self.allies.pop(0)
+            self.fallen_today.append(name)
+            self._say(f"{name} throws themself between you and it. {name} takes the blow meant for you, and doesn't "
+                      "get up. You're alive because of them.", "story")
+            self.hits.append((self.day, 0, f"{name} died saving you"))
+            return
         if n > 0:
             self.hits.append((self.day, n, cause))
         self.health -= n
@@ -1646,7 +1738,7 @@ class Game:
         }
 
     def emoji_row(self) -> str:
-        priority = ["👑", "☠️", "⚔️", "🎁"]
+        priority = ["👑", "☠️", "⚔️", "🎯", "🎁"]
         row = []
         for d in range(1, min(self.day, MAX_DAYS) + 1):
             marks = self.days[d]
@@ -1664,7 +1756,11 @@ class Game:
         place = self.placement or START_TRIBUTES
         pts = (START_TRIBUTES + 1 - place) * 40 + self.kills * 60 + self.day * 25
         if self.won:
-            pts += 500
+            pts += 500 + 3 * self.health  # how much of you made it home
+        # What you did along the way, so two second places on day 8 don't tie.
+        pts += 15 * self.clean  # minigames played cleanly
+        pts += 2 * min(self.wounds, OPPONENT_HEALTH["nemesis"])  # what you took out of the nemesis
+        pts += 150 if self.nemesis in self.killed or (self.won and self.opponent_id == self.nemesis) else 0
         # Your district's multiplier, then 10% for every star you never spent.
         return round(pts * lore.multiplier(self.district) * (1 + 0.1 * self.stars))
 

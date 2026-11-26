@@ -14,7 +14,9 @@
 #          parachute: what you need most), gift (a random found item),
 #          ally (dies|lost|joins_partner; with kill, the ally is your kill), target_dies (they die,
 #          not by your hand), die (cause), cause (if this outcome kills you),
-#          next (card id, or "duel"), win, partner_dies
+#          next (card id, or "duel"), win, partner_dies,
+#          wound (n: the nemesis starts the final fight with n less health),
+#          study (you've seen how the nemesis fights: fewer feints in the final fight)
 # Nothing is hidden: every effect shows on the option as a chip.
 # Text can use {ally} {partner} {district} {Target} {target} {Nemesis} {nemesis} {remaining}.
 
@@ -129,8 +131,7 @@
   - 2
   - 7
   emoji: 🐝
-  text: A nest of tracker jackers hangs from the branch above you. Below, the Career pack is asleep around their
-    fire.
+  text: A nest of tracker jackers hangs from the branch above you. Below, the Career pack is asleep around their fire.
   options:
   - label: Saw the branch
     need:
@@ -303,7 +304,7 @@
     fail:
       text: One of them smells smoke on you.
       effects:
-        health: -50
+        health: -25
         cause: the Career pack
   - label: Climb a tree
     hint: Careers are bad climbers.
@@ -318,7 +319,7 @@
     fail:
       text: A branch snaps. You hit the ground running.
       effects:
-        health: -35
+        health: -28
         cause: the Career pack
   - label: Fight them
     hint: Four against one.
@@ -714,7 +715,9 @@
       mods:
       - escape
     success:
-      text: You climb above the flood and watch it roar past.
+      text: You climb above the flood. From up there you spot a camp the water just emptied.
+      effects:
+        gift: true
     fail:
       text: The ground gives way under you.
       effects:
@@ -811,7 +814,7 @@
       text: The winner wasn't as tired as they looked.
       effects:
         health: -40
-        cause: a tribute below the ridge
+        cause: the winner of the fight at the horn
   - label: Slip past while they're busy
     tag: safe
     roll:
@@ -925,7 +928,7 @@
     fail:
       text: You sink to your chest before your fingers find a root.
       effects:
-        health: -30
+        health: -25
         cause: a mud pit
   - label: Thrash your way out
     tag: bold
@@ -989,7 +992,7 @@
     fail:
       text: You looked down.
       effects:
-        health: -45
+        health: -28
         cause: a long fall
   - label: Go the long way around
     tag: hide
@@ -1023,7 +1026,7 @@
     fail:
       text: It was faster than you.
       effects:
-        health: -35
+        health: -25
         cause: something in the dark
   - label: Charge it
     tag: bold
@@ -1234,12 +1237,13 @@
       base: 40
       mods: []
     success:
-      text: Turns out they wanted a deer. They cut you down and leave.
-      effects: {}
+      text: Turns out they wanted a deer. They cut you down and, embarrassed, share their dinner.
+      effects:
+        supplies: 1
     fail:
       text: Turns out they wanted you.
       effects:
-        health: -45
+        health: -28
         cause: a tribute's trap
 - id: landslide
   kind: event
@@ -1274,7 +1278,7 @@
     fail:
       text: The overhang doesn't hold.
       effects:
-        health: -40
+        health: -25
         cause: a landslide
 - id: gm_quake
   kind: gamemaker
@@ -1306,7 +1310,7 @@
     fail:
       text: The tree goes first.
       effects:
-        health: -40
+        health: -28
         cause: the earthquake
 - id: betrayal
   kind: betrayal
@@ -1320,7 +1324,7 @@
   text: Only {remaining} tributes left. {ally} hasn't slept in two days. Neither have you.
   options:
   - label: Trust {ally}
-    tag: safe
+    tag: bold
     roll:
       base: 60
       mods: []
@@ -1359,8 +1363,7 @@
 - id: gm_fire
   kind: gamemaker
   emoji: 🔥
-  text: The Gamemakers are done waiting for you to come out. A wall of fire roars through the forest, straight at
-    you.
+  text: The Gamemakers are done waiting for you to come out. A wall of fire roars through the forest, straight at you.
   options:
   - label: Run downhill to the water
     tag: safe
@@ -1373,7 +1376,7 @@
     fail:
       text: Fireballs follow you down the hill.
       effects:
-        health: -40
+        health: -28
         cause: the fire wall
   - label: Run through the gap in the flames
     tag: bold
@@ -1393,8 +1396,7 @@
 - id: gm_mutts
   kind: gamemaker
   emoji: 🐺
-  text: Wolf-like mutts pour out of the treeline, herding you toward the middle of the arena. Their eyes look almost
-    human.
+  text: Wolf-like mutts pour out of the treeline, herding you toward the middle of the arena. Their eyes look almost human.
   options:
   - label: Climb
     tag: safe
@@ -1407,7 +1409,7 @@
     fail:
       text: Teeth catch your ankle as you climb.
       effects:
-        health: -40
+        health: -28
         cause: mutts
   - label: Fight them off
     tag: bold
@@ -1440,7 +1442,7 @@
     fail:
       text: It catches your legs. They burn for days.
       effects:
-        health: -45
+        health: -28
         cause: poison fog
   - label: Dive into the lake
     tag: bold
@@ -1482,8 +1484,8 @@
 - id: feast
   kind: feast
   emoji: 🍽️
-  text: The feast. A table at the mouth of the horn, a pack for every district. Yours has your number on it. So
-    does everyone else's.
+  text: The feast. A table at the mouth of the horn, a pack for every district. Yours has your number on it. So does everyone
+    else's.
   options:
   - label: Run straight for your pack
     hint: Everyone left alive is here.
@@ -1522,8 +1524,7 @@
 - id: flood
   kind: finale
   emoji: 🌊
-  text: The Gamemakers have had enough. The arena floods, driving all {remaining} survivors to the Cornucopia. It's
-    chaos.
+  text: The Gamemakers have had enough. The arena floods, driving all {remaining} survivors to the Cornucopia. It's chaos.
   options:
   - label: Climb onto the horn
     tag: safe
@@ -1562,8 +1563,7 @@
 - id: fire_finale
   kind: finale
   emoji: 🔥
-  text: The Gamemakers set the whole arena alight at once. A wall of fire herds all {remaining} survivors toward
-    the Cornucopia.
+  text: The Gamemakers set the whole arena alight at once. A wall of fire herds all {remaining} survivors toward the Cornucopia.
   options:
   - label: Run ahead of it
     tag: safe
@@ -1603,8 +1603,8 @@
 - id: mutt_finale
   kind: finale
   emoji: 🐺
-  text: Night falls at noon. Then the howling starts. The Gamemakers' mutts pour out of the trees, and the only
-    high ground left is the horn.
+  text: Night falls at noon. Then the howling starts. The Gamemakers' mutts pour out of the trees, and the only high ground
+    left is the horn.
   options:
   - label: Race them to the horn
     tag: safe
@@ -1661,8 +1661,8 @@
 - id: fog_finale
   kind: finale
   emoji: 🌫️
-  text: A yellow fog rolls down from the hills. It blisters whatever it touches, and it's coming for everyone. All
-    {remaining} survivors run for the horn.
+  text: A yellow fog rolls down from the hills. It blisters whatever it touches, and it's coming for everyone. All {remaining}
+    survivors run for the horn.
   options:
   - label: Run for the horn
     tag: safe
@@ -2510,8 +2510,7 @@
   - 2
   - 7
   emoji: 🩸
-  text: '{Nemesis} walks past close enough to touch, wiping someone else''s blood off a blade. They haven''t seen
-    you.'
+  text: '{Nemesis} walks past close enough to touch, wiping someone else''s blood off a blade. They haven''t seen you.'
   options:
   - label: Stay still
     tag: hide
@@ -2521,10 +2520,11 @@
       mods:
       - stealth
     success:
-      text: They walk on. Now you know what you're up against.
-      effects: {}
+      text: 'They walk on. You watched how they move: you''ll see their feint coming.'
+      effects:
+        study: true
     fail:
-      text: "They see you. They smile. They cut you once, just to remember you by."
+      text: They see you. They smile. They cut you once, just to remember you by.
       effects:
         health: -18
         cause: '{nemesis}'
@@ -2535,10 +2535,11 @@
       mods:
       - stealth
     success:
-      text: They leave their camp to hunt. You leave it lighter.
+      text: They leave their camp to hunt. You leave it lighter, and you've seen how they fight.
       effects:
         gift: true
         supplies: 2
+        study: true
     fail:
       text: They knew you were there the whole time.
       effects:
@@ -2566,14 +2567,33 @@
       mods:
       - combat
     success:
-      text: "The Capitol's favorite killer falls, and the Capitol has a new favorite."
+      text: The Capitol's favorite killer falls, and the Capitol has a new favorite.
       effects:
         kill: 1
         sponsor: true
     fail:
-      text: They're everything the Capitol said they were.
+      text: They're everything the Capitol said they were. But you open a cut on them before you get away.
       effects:
         health: -30
+        wound: 25
+        cause: '{nemesis}'
+  - label: Lead them into your snare
+    hint: Rope across the path, at ankle height.
+    need:
+      item: rope
+    tag: bold
+    roll:
+      base: 55
+      mods:
+      - escape
+    success:
+      text: They hit the rope at a run and go down hard. You're gone before they get up, and they'll limp to the end.
+      effects:
+        wound: 40
+    fail:
+      text: They step over it. Then they step over you.
+      effects:
+        health: -25
         cause: '{nemesis}'
   - label: Run
     tag: safe

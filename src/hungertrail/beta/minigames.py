@@ -272,15 +272,17 @@ def hide_run(p: dict, toggles: list[int]) -> tuple[str, int]:
 
 # ------------------------------------------------------------------ read and react (the final fight)
 # They wind up on one side. Block that side as the blow lands; a clean block opens a moment to strike.
-def fight_params(r: random.Random, stance: str, boss: bool, rope: bool, weapon_bonus: int, exchange: int = 0) -> dict:
+def fight_params(r: random.Random, stance: str, boss: bool, rope: bool, weapon_bonus: int, exchange: int = 0,
+                 read: bool = False) -> dict:
     """They wind up on `first`; if they feint, the blow comes from the other side at `feint`.
-    Every exchange they get a little faster and feint a little more: nobody can block forever."""
+    Every exchange they get a little faster and feint a little more: nobody can block forever.
+    `read`: you've watched the nemesis fight, so they feint half as often."""
     tell = r.randint(40, 90)
     lo, hi = (28, 48) if boss else (36, 60)
     windup = max(20, r.randint(lo, hi) - 3 * exchange)
     impact = tell + windup
     first = r.randint(0, 1)
-    feint = tell + windup // 2 if r.random() < (0.5 if boss else 0.3) + 0.06 * exchange else -1
+    feint = tell + windup // 2 if r.random() < ((0.25 if read else 0.5) if boss else 0.3) + 0.06 * exchange else -1
     side = 1 - first if feint >= 0 else first
     early = (20 if stance == "careful" else 12) + (8 if rope else 0)
     open_at = impact + 8
