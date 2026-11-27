@@ -222,7 +222,23 @@
 .dig { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0.7rem; border: 1px solid var(--line); }
 .digrow { display: flex; align-items: baseline; gap: 0.6rem; }
 .digrow .dname { flex: 0 0 4.2rem; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
-.digrow .dwhat { font-size: 1.1rem; letter-spacing: 0.02em; white-space: nowrap; }
+.digrow .dwhat { font-size: 1.1rem; letter-spacing: 0.02em; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.15rem; min-width: 0; }
+.digrow .dwhat .bur.useless { opacity: 0.35; filter: grayscale(1); }
+.dig .dignote { margin: 0 0 0 4.8rem; font-size: 11.5px; }
+#log .entry.roll.digline { padding: 0.15rem 0.5rem; margin: 0.1rem 0 0.25rem; border-width: 1px; font-size: 13px; }
+#log .entry.roll.digline b { font-size: 1.15rem; margin-right: 0.4rem; }
+#log .entry.roll.digline span { font-family: var(--mono); font-size: 12.5px; }
+
+/* the pack screen: your kit and what you found, together; keep three */
+.packscreen { display: flex; flex-direction: column; gap: 0.35rem; }
+.packscreen .packhead { margin: 0; font-size: 13px; color: var(--dim); }
+.packitem { display: grid; grid-template-columns: 1.6rem 1fr; text-align: left; gap: 0.05rem 0.4rem; padding: 0.45rem 0.6rem; }
+.packitem .pk-tick { grid-row: span 3; font-size: 1.3rem; color: var(--dim); align-self: center; text-align: center; }
+.packitem.on { border-color: var(--good); }
+.packitem.on .pk-tick { color: var(--good); }
+.packitem .pk-desc, .packitem .pk-note { grid-column: 2; font-size: 12px; color: var(--dim); }
+.packitem .pk-note { color: var(--gold); }
+.packitem small.new { color: var(--gold); }
 .digrow .dwhat i { font-style: normal; color: var(--dim); margin-right: 0.2rem; }
 .digrow .dwhat i.on { color: var(--bad); }
 .digrow .dwhat .dim { font-size: 13px; letter-spacing: normal; }
@@ -288,3 +304,9 @@
 .wheel-verdict span { font-family: var(--mono); font-size: 13px; }
 .mg-verdict.near { color: var(--gold); border-color: var(--gold); background: #302810; }
 @media (prefers-reduced-motion: reduce) { .wheel-disc.wobble { animation: none; } }
+
+/* the story always keeps room on a phone: long option lists scroll instead of pushing it off screen */
+#options { max-height: 62dvh; overflow-y: auto; }
+#log { min-height: 30dvh; }
+.unranked { color: var(--gold); }
+.scoreline { font-size: 12px; margin-top: -0.2rem; }

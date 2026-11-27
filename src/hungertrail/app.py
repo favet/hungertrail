@@ -187,6 +187,7 @@ def submit(request: Request, body: SubmitBody):
 class BetaStartBody(BaseModel):
     mode: str
     district: int
+    ranked: bool = True
     partner: str = Field("", max_length=40)
     allies: list[str] = Field(default_factory=list, max_length=2)
 
@@ -204,7 +205,8 @@ def _beta_view(token, game, p):
 @app.post("/api/beta/run")
 def beta_start(body: BetaStartBody):
     try:
-        token, game, p = beta_runs.start(settings, today(settings), body.mode, body.district, body.partner, body.allies)
+        token, game, p = beta_runs.start(settings, today(settings), body.mode, body.district, body.partner, body.allies,
+                                         body.ranked)
     except runs.RunError as e:
         _fail(e)
     return _beta_view(token, game, p)
@@ -252,6 +254,8 @@ def beta_submit(request: Request, body: SubmitBody):
         _fail(e)
     if p["m"] != "daily":
         raise HTTPException(400, "Practice runs aren't ranked.")
+    if not p.get("r"):
+        raise HTTPException(400, "Only your first run of today's arena is ranked. Replays are for fun.")
     if not game.over:
         raise HTTPException(400, "Finish the run first.")
     if (today(settings) - date.fromisoformat(p["d"])).days > 1:

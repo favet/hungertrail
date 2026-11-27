@@ -77,7 +77,7 @@ const Games = (() => {
   // ---------------------------------------------------------------- fishing
   function fish(p, done) {
     const box = open("FISHING", "Hold to raise your bar, let go to drop it. Keep the fish inside the bar until the line fills."
-      + (p.kind === "leech" ? "" : " If it's a 🪱 leech, let it go."));
+      + (p.kind === "leech" ? " This one's a 🪱 leech: let it go. Don't reel it in." : ""));
     const well = mk("div", "fishwell"), bar = mk("div", "fbar"), fishy = mk("div", "ffish", p.emoji);
     const meter = mk("div", "fmeter"), fill = mk("i");
     meter.append(fill);
@@ -174,7 +174,8 @@ const Games = (() => {
         else {
           label();
           btn.disabled = true;
-          verdict(box, food > 0, food > 0 ? `✓ 🎒+${food}` : "✗ NOTHING");
+          const room = p.room == null ? food : Math.max(0, Math.min(food, p.room));
+          verdict(box, food > 0, food > 0 ? (room < food ? `✓ 🎒+${room} (pack full)` : `✓ 🎒+${food}`) : "✗ NOTHING");
           close(() => done(taps));
         }
       }, 650);

@@ -80,6 +80,8 @@ const Sound = (() => {
 
 // ------------------------------------------------------------------ title
 function dailyKey() { return "daily." + daily.date; }
+// Only the first run of today's arena is ranked: a replay knows the pile, the nemesis and the finale.
+function playedToday() { return !!store.get("played." + daily.date); }
 
 function refreshTitle() {
   const d = new Date(daily.date + "T12:00:00");
@@ -124,7 +126,8 @@ function chooseDistrict(id) {
 
 function openReaping(m) {
   mode = m;
-  $("#reaping-title").textContent = m === "daily" ? `The Reaping · Arena #${daily.number}` : "The Reaping · Practice";
+  $("#reaping-title").textContent = m === "daily" ? `The Reaping · Arena #${daily.number}` + (playedToday() ? " · replay" : "") : "The Reaping · Practice";
+  $("#reaping-note").hidden = !(m === "daily" && playedToday());
   buildReaping();
   show("reaping");
 }
@@ -139,7 +142,8 @@ async function startRun() {
   };
   store.set("setup", setup);
   try {
-    const v = await api("/run", { mode, ...setup });
+    const v = await api("/run", { mode, ...setup, ranked: mode !== "daily" || !playedToday() });
+    if (mode === "daily") store.set("played." + daily.date, true);
     save(v);
     enterGame(v);
   } catch (e) { toast(e.message); }
@@ -192,9 +196,10 @@ function openSponsors(s) {
     el("p", {}, el("b", { text: `Sponsors · ⭐ ${s.stars} of ${s.stars_max}` })),
     el("p", { class: "dim small", text: s.order
       ? `Tonight's parachute: ${s.order.split(":")[0].toLowerCase()}. One a night.`
-      : "Your stars pay for one parachute a night. It drops at nightfall. Every star you keep adds 10% to your score." }),
+      : s.fight ? "The whole Capitol is watching the final fight. A parachute lands at once."
+      : "Your stars pay for one parachute a night. It drops at nightfall. In the final fight it lands at once. Every star you keep adds 10% to your score." }),
     el("div", { class: "buylist" }, ...rows),
-    el("p", { class: "dim small", text: "Earn stars with long shots that land, kills, and playing to the cameras. Walking away costs one." }),
+    el("p", { class: "dim small", text: "Earn stars with long shots that land, kills, playing to the cameras, and sharing what you can't carry. Walking away costs one." }),
     el("button", { text: "Close", onclick: () => (pop.hidden = true) }));
   pop.hidden = false;
 }
@@ -330,7 +335,7 @@ function entryNode(entry) {
       head = entry.head || entry.label;
       note = entry.note;
     }
-    node = el("p", { class: "entry roll " + tone }, el("b", { text: head }), el("span", { text: note }));
+    node = el("p", { class: "entry roll " + tone + (entry.dig ? " digline" : "") }, el("b", { text: head }), el("span", { text: note }));
   } else {
     node = el("p", { class: "entry " + entry.kind, text: entry.kind === "choice" ? "> " + entry.text : entry.text });
   }
@@ -421,7 +426,7 @@ async function revealPage(page, gen, first) {
       newScene(entry.day);
       if (!first) scrollToScene();
     }
-    if (!first && entry.kind === "roll" && !entry.game) await Wheel.spin(entry, hurry);
+    if (!first && entry.kind === "roll" && !entry.game) await Wheel.spin(entry, hurry || !!entry.dig);
     else if (!first && shownOne && !HIDDEN.has(entry.kind) && !hurry) await sleep(entry.kind === "delta" ? 260 : 420);
     const node = entryNode(entry);
     if (first) node.classList.add("instant");
@@ -475,7 +480,7 @@ function showOptions(v) {
   }
   if (v.dig) box.append(digPanel(v.dig, delay));
   if (v.card === "draft") return box.append(hornDraft(v, delay));
-  v.options.filter((o) => o.dig == null).forEach((o, i) => box.append(optionButton(o, i, delay, v.card)));
+  v.options.forEach((o, i) => box.append(o.pack ? packScreen(o, delay) : optionButton(o, i, delay, v.card)));
   // What an item you don't have would let you do here.
   for (const l of v.locked || []) {
     box.append(el("div", { class: "option locked appear", style: `animation-delay:${delay + 200}ms` },
@@ -526,10 +531,43 @@ function digPanel(d, delay) {
   const row = (name, ...kids) => el("div", { class: "digrow" }, el("span", { class: "dname", text: name }), el("span", { class: "dwhat" }, ...kids));
   const ears = [];
   for (let i = 0; i < d.caught; i++) ears.push(el("i", { class: i < d.heard ? "on" : "", text: i < d.heard ? "●" : "○" }));
+  const buried = d.buried.map((b) => el("span", { class: "bur" + (b.use ? "" : " useless"), title: b.use ? "" : "no use to you now",
+    text: b.icon }));
+  const useless = d.buried.some((b) => !b.use);
   return el("div", { class: "dig appear", style: `animation-delay:${delay}ms` },
-    row("Buried", d.buried.join(" ")),
-    row("Careers", ...ears),
+    row("Buried", ...buried),
+    useless ? el("p", { class: "dignote dim", text: "Dimmed: no use to you now (you'd share it)." }) : null,
+    row("Noise", ...ears, el("span", { class: "dim", text: d.heard >= d.caught - 1 ? " the next one brings a Career" : " the third brings a Career" })),
     row("Yours", d.haul.length ? d.haul.join(" ") : el("span", { class: "dim", text: "nothing yet" })));
+}
+
+// The pack screen: everything you carry and everything you just found, together. Tap to keep up to
+// three, then keep them. What you leave stays where it is.
+function packScreen(o, delay) {
+  const { items, slots } = o.pack;
+  const keep = new Set(items.map((it, i) => (it.kit ? i : -1)).filter((i) => i >= 0).slice(0, slots));
+  const wrap = el("div", { class: "packscreen appear", style: `animation-delay:${delay}ms` });
+  const head = el("p", { class: "packhead" });
+  const go = el("button", { class: "big primary" });
+  const rows = items.map((it, i) => {
+    const b = el("button", { class: "packitem" },
+      el("span", { class: "pk-tick" }),
+      el("span", { class: "pk-name" }, el("b", { text: `${it.emoji} ${it.name}` }), it.kit ? el("small", { class: "dim", text: " in your kit" }) : el("small", { class: "new", text: " new" })),
+      el("small", { class: "pk-desc", text: it.desc }),
+      it.note ? el("small", { class: "pk-note", text: it.note }) : null);
+    b.onclick = () => { if (keep.has(i)) keep.delete(i); else if (keep.size < slots) keep.add(i); paint(); };
+    return b;
+  });
+  function paint() {
+    rows.forEach((b, i) => { b.classList.toggle("on", keep.has(i)); $(".pk-tick", b).textContent = keep.has(i) ? "✓" : "·"; });
+    const left = items.filter((_, i) => !keep.has(i)).map((it) => it.name);
+    head.textContent = `You can carry ${slots}. ${keep.size} chosen.` + (left.length ? ` Leaving the ${left.join(" and the ")}.` : "");
+    go.textContent = `Keep ${keep.size === 1 ? "this" : "these"}`;
+  }
+  go.onclick = () => send(o.index, [...keep].sort((a, b) => a - b));
+  wrap.append(head, ...rows, go);
+  paint();
+  return wrap;
 }
 
 function optionButton(o, i, delay, card) {
@@ -541,8 +579,9 @@ function optionButton(o, i, delay, card) {
   } else if (o.chance != null || (o.minigame && o.lose.length)) {
     stakes.append(el("span", { class: "win", text: "✓ " + (o.win.length ? o.win.join(", ") : "you're fine") }));
     stakes.append(el("span", { class: "lose" + (o.deadly ? " deadly" : ""), text: "✗ " + (o.lose.length ? o.lose.join(", ") : "nothing lost") }));
-  } else if (o.win.length) {
-    stakes.append(el("span", { class: "win", text: "→ " + o.win.join(", ") }));
+  } else if (o.win.length || o.lose.length) {
+    if (o.win.length) stakes.append(el("span", { class: o.win.every((w) => w.startsWith("−")) ? "lose" : "win", text: "→ " + o.win.join(", ") }));
+    if (o.lose.length) stakes.append(el("span", { class: "lose", text: "✗ " + o.lose.join(", ") }));
   }
   const hint = o.place ? null : o.hint;  // places speak through their chips
   return el("button", { class: "option appear" + (o.place ? " where" : ""), style: `animation-delay:${delay + i * 60}ms`, onclick: () => pickOption(o) },
@@ -584,7 +623,7 @@ async function send(index, param) {
 
 document.addEventListener("keydown", (e) => {
   if (busy || Games.active() || $("#game").hidden || !view || e.target.tagName === "INPUT") return;
-  const opts = view.options.filter((o) => o.dig == null);
+  const opts = view.options.filter((o) => !o.pack);
   const n = parseInt(e.key, 10);
   if (n >= 1 && n <= opts.length) pickOption(opts[n - 1]);
 });
@@ -605,15 +644,25 @@ function showResults(v) {
       el("span", {}, el("b", { text: r.score.toLocaleString() }), ` pts (×${r.multiplier})`)),
     el("p", { class: "cause", text: r.won ? "Won the Hunger Games." : r.cause === "giving up" ? "Gave up." : "Killed by " + r.cause + "." }),
     !r.won && r.recap ? el("p", { class: "recap dim", text: r.recap }) : null,
+    r.score_parts ? el("p", { class: "scoreline dim", text: scoreLine(r.score_parts, r.district) }) : null,
+    v.mode === "daily" && !r.ranked ? el("p", { class: "unranked small", text: "A replay of today's arena: not ranked. Only your first run goes on the board." }) : null,
   ].filter(Boolean)
   );
   $("#btn-retry").hidden = v.mode !== "daily";
-  const canSubmit = v.mode === "daily" && !store.get("submitted." + v.date);
+  $("#btn-retry").textContent = "Play today's arena again (unranked)";
+  const canSubmit = v.mode === "daily" && r.ranked && !store.get("submitted." + v.date);
   $("#submit-box").hidden = !canSubmit;
   $("#submit-msg").textContent = "";
   $("#nickname").value = store.get("nick") || "";
   $("#btn-results-board").hidden = v.mode !== "daily";
   show("results");
+}
+
+// How the score was built: points, then your district's multiplier, then 10% a star you kept.
+function scoreLine(p, district) {
+  const bits = [`${p.points.toLocaleString()} pts`, `× ${p.district} for District ${district}`];
+  if (p.stars) bits.push(`× ${(1 + p.stars / 10).toFixed(1)} for ${p.stars} star${p.stars === 1 ? "" : "s"} kept`);
+  return bits.join(" ") + ` = ${p.total.toLocaleString()}`;
 }
 
 async function share() {
@@ -696,7 +745,7 @@ function openSettings(inGame) {
     rows.push(el("button", { text: "Main menu (your run is saved)", onclick: () => { close(); refreshTitle(); show("title"); } }));
     // Restarting is free, in practice and in today's arena: a fresh run from the reaping.
     const daily = view.mode === "daily";
-    rows.push(confirmButton(daily ? "Restart today's run" : "Restart this practice run", "Tap again to restart", () => {
+    rows.push(confirmButton(daily ? "Restart today's run (unranked)" : "Restart this practice run", "Tap again to restart", () => {
       close(); store.del(daily ? dailyKey() : "practice"); openReaping(view.mode);
     }));
   } else if (!inGame) {
