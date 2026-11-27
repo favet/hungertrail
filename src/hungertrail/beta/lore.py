@@ -58,3 +58,11 @@ def item_name(i: str) -> str:
 
 def item_emoji(i: str) -> str:
     return PACKS[i][1] if i in PACKS else ITEMS[i][1]
+
+
+def a(i: str) -> str:
+    """The item with its article: "a knife", "an axe", "some iodine"."""
+    name = item_name(i)
+    if i == "iodine":
+        return "some iodine"
+    return ("an " if name[0] in "aeiou" else "a ") + name

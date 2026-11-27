@@ -50,10 +50,17 @@ def digger(g: Game, nerve: float = 0.34):
     v = g.dig_view()
     if v["heard"] < DIG_CAUGHT - 1:
         return DIG_GO
-    risk = v["buried"].count("👂") / len(v["buried"])
+    risk = sum(1 for b in v["buried"] if b["icon"] == "👂") / len(v["buried"])
     if g.health <= DIG_HIT + 5 or risk > (nerve + 0.15 if not v["haul"] else nerve):
         return DIG_LEAVE
     return DIG_GO
+
+
+def keep(g: Game) -> list[int]:
+    """The pack screen: the three most useful things. A second weapon is worth little: only the best counts."""
+    items = g._pack()
+    value = [1 if it["note"] else VALUE.get(it["id"], 3) for it in items]
+    return sorted(sorted(range(len(items)), key=lambda i: -value[i])[:lore.KIT_SLOTS])
 
 
 def shopper(g: Game):
@@ -85,10 +92,7 @@ def smart(g: Game, r: random.Random):
             return _best(grabs, v)["index"]
         return opts[-1]["index"]
     if g.card == SWAP:
-        worst = min(range(len(g.kit)), key=lambda i: VALUE.get(g.kit[i], 3))
-        if VALUE.get(g.pending_item, 3) > VALUE.get(g.kit[worst], 3):
-            return worst
-        return opts[-1]["index"]
+        return 0, keep(g)
     if g.card == DUEL:
         # Heavy strikes while you can afford to take a hit; guard when you can't.
         aggressive, careful = opts
@@ -153,7 +157,8 @@ def play(bot, seed: int, district: int | None = None, skill: float | None = None
         if g.over:
             break
         idx = bot(g, r)
-        g.choose(idx, hands(g, idx, skill, r))
+        idx, param = idx if isinstance(idx, tuple) else (idx, hands(g, idx, skill, r))
+        g.choose(idx, param)
     assert g.over, "run did not end"
     return g
 

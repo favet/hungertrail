@@ -18,8 +18,8 @@ from . import lore
 from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
-RELEASE = "Beta 4"  # the name on the title screen, so a tester can tell which beta is live
-VERSION = "b8"  # b8: the dig at the horn is push-your-luck, not the sift
+RELEASE = "Beta 5"  # the name on the title screen, so a tester can tell which beta is live
+VERSION = "b9"  # b9: beta 5 (a varied dig, one pack screen, a harder final fight, ranked first runs)
 
 
 def _mac(settings: Settings, body: bytes) -> str:
@@ -53,7 +53,10 @@ _latest: dict[str, int] = {}
 _lock = threading.Lock()
 
 
-def start(settings: Settings, today: date, mode: str, district: int, partner: str, allies: list[str]) -> tuple[str, Game, dict]:
+def start(settings: Settings, today: date, mode: str, district: int, partner: str, allies: list[str],
+          ranked: bool = True) -> tuple[str, Game, dict]:
+    """ranked: False for a daily you've already started once on this device. A replay knows the pile, the
+    nemesis and the finale, so it can't go on the board."""
     if mode not in ("daily", "practice"):
         raise RunError("bad mode")
     run_id = secrets.token_urlsafe(9)
@@ -63,7 +66,8 @@ def start(settings: Settings, today: date, mode: str, district: int, partner: st
         setup = new_setup(int(district), partner, list(dict.fromkeys(allies)))
     except (TypeError, ValueError) as e:
         raise RunError(str(e))
-    payload = {"v": VERSION, "id": run_id, "m": mode, "d": today.isoformat(), "s": setup, "c": []}
+    payload = {"v": VERSION, "id": run_id, "m": mode, "d": today.isoformat(), "s": setup, "c": [],
+               "r": 1 if mode == "daily" and ranked else 0}
     return encode(settings, payload), _build(settings, payload), payload
 
 
@@ -109,7 +113,8 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
     if not game.over:
         return None
     number = daily_for(settings, date.fromisoformat(p["d"])).number
-    title = f"HUNGER TRAIL β · Arena #{number}" if p["m"] == "daily" else "HUNGER TRAIL β (practice)"
+    title = (f"HUNGER TRAIL β · Arena #{number}" + ("" if p.get("r") else " (replay)") if p["m"] == "daily"
+             else "HUNGER TRAIL β (practice)")
     kills = f"{game.kills} kill{'s' if game.kills != 1 else ''}"
     if game.won:
         line, end = f"👑 VICTOR · {kills} · Day {game.day}", "Won the Hunger Games."
@@ -131,6 +136,8 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
         "emoji": game.emoji_row(),
         "district": game.district,
         "share": share,
+        "ranked": bool(p.get("r")),
+        "score_parts": game.score_parts(),
     }
 
 
@@ -139,6 +146,7 @@ def view(settings: Settings, token: str, game: Game, p: dict) -> dict:
     return {
         "token": token,
         "mode": p["m"],
+        "ranked": bool(p.get("r")),
         "date": p["d"],
         "number": daily_for(settings, d).number,
         "district": game.district,

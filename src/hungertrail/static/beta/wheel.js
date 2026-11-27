@@ -130,6 +130,12 @@ const Wheel = (() => {
         const odds = { chance: entry.chance, base: entry.base ?? entry.chance, edges: entry.edges || [], slices: entry.slices };
         const { wrap, disc } = draw(odds, entry.near_zone);
         box.append(wrap, edgeList(odds));
+        if (entry.win || entry.lose) {  // the dig: what green and red mean, like every other wheel
+          const stakes = mk("div", "wheel-stakes");
+          stakes.append(mk("span", "win", "Green: " + (entry.win || []).join(", ")));
+          stakes.append(mk("span", "lose", "Red: " + (entry.lose || []).join(", ")));
+          box.append(stakes);
+        }
         cur = { box, disc, label: entry.label };
       }
       const { box, disc } = cur;

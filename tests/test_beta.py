@@ -11,12 +11,12 @@ from hungertrail.app import app
 from hungertrail.beta import engine, lore
 from hungertrail.beta import minigames as mg
 from hungertrail.beta.bots import BOTS, hands, play
-from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, DIG, DIG_GO, DIG_LEAVE, DIG_CAUGHT, DIG_NOISE, SWAP, USE,
+from hungertrail.beta.engine import (DRAFT, DUEL, EDGE, PLACE_KEYS, PLACES, DIG, DIG_GO, DIG_LEAVE, DIG_CAUGHT, SWAP, USE,
                                      Game, cards, new_setup, replay)
 
 SETUP = new_setup(12, "Jake", ["Gingi"])
 KNOWN_EFFECTS = {"health", "supplies", "sponsor", "add", "remove", "kill", "ally", "die", "cause", "next", "gift", "win", "partner_dies", "target_dies", "wound", "study"}
-KNOWN_NEEDS = {"item", "any", "perk", "ally", "supplies"}
+KNOWN_NEEDS = {"item", "any", "without", "perk", "ally", "supplies"}
 
 
 def _run(seed, salt, choices_from=None):
@@ -89,19 +89,27 @@ def test_draft_gives_kit_and_ends_bloodbath():
     assert g.card == PLACES and g.day == 2 and g.kit == [] and "🌲" in g.days[1]
 
 
-def test_full_kit_asks_what_to_drop():
+def test_full_kit_asks_what_to_keep():
+    """Everything that doesn't fit goes on one screen with your kit: keep any three."""
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))
     g.kit = ["knife", "rope", "medkit"]
     snap = g._snap()
     g._gain("bow")
+    g._gain("axe")
+    g._gain("bow")  # a second copy is left where it is
     g._delta(snap)
     g._advance(("night",))
     assert g.card == SWAP and g.day == 2
-    labels = [o["label"] for o in g.options()]
-    assert labels[-1] == "Leave the bow" and "Drop the knife" in labels
-    g.choose(0)  # drop the knife
-    assert "bow" in g.kit and "knife" not in g.kit and g.card != SWAP
+    pack = g.options()[0]["pack"]
+    assert [i["id"] for i in pack["items"]] == ["knife", "rope", "medkit", "bow", "axe"] and pack["slots"] == 3
+    notes = {i["id"]: i["note"] for i in pack["items"]}
+    assert notes["bow"] == "" and "bow is better" in notes["knife"] and "bow is better" in notes["axe"]
+    with pytest.raises(ValueError):
+        g.choose(0, [0, 1, 2, 3])  # four won't fit
+    g.choose(0, [1, 2, 3])  # rope, medkit, bow
+    assert g.kit == ["rope", "medkit", "bow"] and g.card != SWAP and g.item_queue == []
+    assert any("You leave the knife and the axe" in e["text"] for e in g.log)
 
 
 def test_kills_take_the_named_tribute():
@@ -139,7 +147,7 @@ def test_the_medkit_makes_room_in_a_full_pack():
     g._advance(("night",))
     assert g.card == SWAP
     use = [o for o in g.options() if o["index"] == USE]
-    assert use and use[0]["label"] == "Use the medkit, then take the bow"
+    assert use and use[0]["label"] == "Use the medkit now"
     g.choose(USE)
     assert g.health >= 90 and sorted(g.kit) == ["bow", "knife", "rope"] and g.card != SWAP
 
@@ -168,6 +176,7 @@ def test_hunger_escalates_and_shows_before_night():
     g.choose(len(g.arena.layout))  # run: day 2
     g.district = 7  # District 12 would take half
     g.arena.twist = "fat_fish"  # not the cold
+    g.allies = []  # no ally bringing back a rabbit
     g.supplies = 0
     costs = []
     for _ in range(3):
@@ -199,6 +208,7 @@ def test_stars_buy_a_parachute_that_drops_tonight():
     g = Game(5, 9, SETUP)
     g.choose(len(g.arena.layout))  # run for the trees: day 2, the place menu
     g.arena.twist = "fat_fish"  # no twist on prices or hunger
+    g.allies = []
     g.stars, g.supplies = 4, 0
     menu = {m["key"]: m for m in g.status()["menu"]}
     assert menu["food"]["can"] and menu["food"]["price"] == 2 and not menu["bow"]["can"]
@@ -318,30 +328,39 @@ def test_hide_is_fair():
 
 
 def test_dig_at_the_horn():
-    """Push your luck: each dig spins a wheel of what's still buried; the third noise brings a Career."""
-    def at_horn(salt):
-        g = Game(5, salt, SETUP)
+    """Push your luck: each dig spins a wheel of what's still buried. Every noise costs a little; the
+    third brings a Career, and the haul is lost."""
+    def at_horn(salt, seed=5):
+        g = Game(seed, salt, SETUP)
         g.choose(len(g.arena.layout))
         g.arena.offers[2] = ["stream", "horn", "open"]
-        g.kit, g.health = [], 100
+        g.kit, g.health, g.supplies = [], 100, 1
         g.choose(next(o for o in g.options() if o["place"] == "horn")["index"])
         return g
 
     g = at_horn(9)
     assert g.card == DIG and [o["label"] for o in g.options()] == ["Dig", "Leave it"]
     view = g.dig_view()
-    loot = len(view["buried"]) - DIG_NOISE
-    assert view["buried"].count("👂") == DIG_NOISE and view["haul"] == [] and view["heard"] == 0
-    assert g.options()[0]["hint"] == f"{DIG_NOISE} in {loot + DIG_NOISE} is noise"
+    noise = sum(1 for b in view["buried"] if b["icon"] == "👂")
+    loot = len(view["buried"]) - noise
+    assert engine.DIG_NOISES[0] <= noise <= engine.DIG_NOISES[1] and engine.DIG_LOOTS[0] <= loot <= engine.DIG_LOOTS[1]
+    assert view["haul"] == [] and view["heard"] == 0
+    dig = g.options()[0]
+    # one way of stating the odds: the chance of loot, on the button and the wheel; and the cost, said
+    assert dig["chance"] == round(100 * loot / (loot + noise)) and dig["lose"] == [f"noise: {engine.hp(-engine.DIG_NOISE_HIT)}"]
+    before = len(g.log)
     g.choose(DIG_GO)
-    spin = g.log[-1] if g.log[-1]["kind"] == "roll" else next(e for e in reversed(g.log) if e["kind"] == "roll")
+    new = g.log[before:]
+    assert len(new) == 1 and new[0]["kind"] == "roll"  # one line per dig
+    spin = new[0]
     # the wheel shows one slice per buried thing, and the roll lands in the slice that was dug
-    assert len(spin["slices"]) == loot + DIG_NOISE and spin["slices"][-1]["b"] == 100
+    assert len(spin["slices"]) == loot + noise and spin["slices"][-1]["b"] == 100
     hit = next(s for s in spin["slices"] if s["a"] < spin["roll"] <= s["b"])
-    assert hit["ok"] == spin["ok"] and spin["chance"] == spin["slices"][loot - 1]["b"]
+    assert hit["ok"] == spin["ok"] and spin["win"] and spin["lose"]
     after = g.dig_view()
-    assert len(after["buried"]) == loot + DIG_NOISE - 1
+    assert len(after["buried"]) == loot + noise - 1
     assert (len(after["haul"]), after["heard"]) == ((1, 0) if spin["ok"] else (0, 1))
+    assert g.health == (100 if spin["ok"] else 100 - engine.DIG_NOISE_HIT)
     # leaving keeps the haul
     food, kit = g.supplies, list(g.kit)
     got = list(g.dig["haul"])
@@ -350,18 +369,43 @@ def test_dig_at_the_horn():
     gained = sum(2 if t["kind"] == "pack" else 1 for t in got if t["kind"] in ("pack", "can"))
     assert g.supplies == food + gained and all(t["item"] in g.kit for t in got if t["item"])
 
-    # digging on and on: either the pile runs dry or the third noise brings a Career and the haul is lost
+    # the pile changes shape from day to day
+    shapes = set()
+    for seed in range(12):
+        g = at_horn(1, seed)
+        v = g.dig_view()
+        shapes.add((len(v["buried"]), sum(1 for b in v["buried"] if b["icon"] == "👂")))
+    assert len(shapes) >= 4
+
+    # digging on and on: either the pile runs dry or the third noise brings a Career, the haul is lost, and
+    # the day is over: no card after it
     for salt in range(1, 40):
         g = at_horn(salt)
         food = g.supplies
         while g.card == DIG and not g.over:
+            last = g.dig["heard"] == DIG_CAUGHT - 1
+            if last:
+                assert engine.hp(-engine.DIG_HIT) in g.options()[0]["lose"]
             g.choose(DIG_GO)
         caught = any("Footsteps" in e["text"] for e in g.log)
         if caught:
-            assert g.health <= 80 and g.supplies == food and not g.kit
+            costs = [n for _, n, c in g.hits if "dug" in c or "digging" in c]
+            assert costs == [engine.DIG_NOISE_HIT] * (DIG_CAUGHT - 1) + [engine.DIG_HIT]
+            assert not g.kit and g.day == 3
             break
     else:
         raise AssertionError("never caught")
+
+
+def test_dig_dims_what_you_cant_use():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.arena.offers[2] = ["stream", "horn", "open"]
+    g.kit, g.supplies = ["trident"], engine.SUPPLY_CAP
+    g.choose(next(o for o in g.options() if o["place"] == "horn")["index"])
+    for t, b in zip(g.dig["loot"], g.dig_view()["buried"]):
+        if t["kind"] in ("pack", "can") or t["item"] in ("spear", "axe", "knife", "bow", "trident"):
+            assert not b["use"], t
 
 
 def test_python_and_browser_minigames_agree():
@@ -533,10 +577,18 @@ def test_food_has_a_cap_and_the_chips_say_so():
     g.supplies = -3
     assert g.supplies == 0
     g.supplies = engine.SUPPLY_CAP - 1
-    assert g._chips({"supplies": 3}) == [engine.food(1)]
+    share = "share what you can't carry: +1 star"
+    assert g._chips({"supplies": 3}) == [engine.food(1), share]
     g.supplies = engine.SUPPLY_CAP
-    assert g._chips({"supplies": 2}) == ["your pack is full of food"]
+    assert g._chips({"supplies": 2}) == [share]
     assert g._chips({"supplies": -1}) == [engine.food(-1)]
+    # What you can't carry, you share: a star, once a day.
+    g.stars = 1
+    g._food(2)
+    assert g.stars == 2 and g.supplies == engine.SUPPLY_CAP
+    assert g._chips({"supplies": 2}) == ["your pack is full of food"]
+    g._food(2)
+    assert g.stars == 2
 
 
 def test_heal_chips_show_what_you_really_gain():
@@ -556,7 +608,7 @@ def test_sponsors_send_what_you_are_missing():
     assert g.supplies == engine.SUPPLY_CAP and g.kit == ["medkit", "rope", "knife"] and g.stars >= stars
     g.health = 50
     g._gift()
-    assert g.health == 80
+    assert g.health == 50 + engine.MEDICINE
 
 
 def test_a_second_copy_stays_where_it_is():
@@ -699,3 +751,98 @@ def test_live_and_beta_tokens_dont_mix():
     live = client.post("/api/run", json={"mode": "practice", "district": 3, "trait": "fighter"}).json()
     assert client.post("/api/run/view", json={"token": beta["token"]}).status_code == 400
     assert client.post("/api/beta/run/view", json={"token": live["token"]}).status_code == 400
+
+
+# ---------------------------------------------------------------- beta 5 rules
+
+
+def test_only_the_first_daily_run_is_ranked():
+    first = client.post("/api/beta/run", json={"mode": "daily", "district": 7}).json()
+    again = client.post("/api/beta/run", json={"mode": "daily", "district": 7, "ranked": False}).json()
+    assert first["ranked"] and not again["ranked"]
+    for v in (first, again):
+        while not v["over"]:
+            o = v["options"][-1] if v["card"] != "swap" else v["options"][0]
+            game = o.get("minigame")
+            param = {"fish": lambda p: mg.bot_fish(p, 0.5, random.Random(1)), "hunt": lambda p: mg.bot_hunt(p, 0.5, random.Random(1)),
+                     "hide": lambda p: mg.bot_hide(p, 0.5, random.Random(1)), "fight": lambda p: mg.bot_fight(p, 0.5, random.Random(1))}[game["game"]](game) if game else None
+            v = client.post("/api/beta/run/choose", json={"token": v["token"], "index": o["index"], "param": param}).json()
+    assert v["result"]["ranked"] is False and "(replay)" in v["result"]["share"]
+    res = client.post("/api/beta/leaderboard", json={"token": v["token"], "nickname": "Replayer"})
+    assert res.status_code == 400 and "first run" in res.json()["detail"]
+
+
+def test_a_gamemaker_morning_still_lets_you_choose_where_to_go():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.gm_due = True
+    g._night()
+    assert g.card.startswith("gm_")
+    day = g.day
+    safe = next(o for o in g.options() if not o.get("minigame"))
+    g.choose(safe["index"])
+    if not g.over:
+        assert g.card == PLACES and g.day == day  # the promised places are still there
+
+
+def test_the_refuge_is_open_the_day_caesar_says_so():
+    for seed in range(30):
+        a = Game(seed, 1, SETUP).arena
+        assert a.refuge in a.offers[engine.EDGE_CLOSES]
+
+
+def test_an_option_a_better_one_replaces_is_hidden():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.card, g.kit = "high_river", []
+    assert "Ford the river" in [o["label"] for o in g.options()]
+    g.kit = ["rope"]
+    labels = [o["label"] for o in g.options()]
+    assert "Ford the river" not in labels and "Float across on a rope line" in labels
+
+
+def test_stars_buy_help_in_the_final_fight():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    g.allies = []
+    g.stars, g.health = 5, 40
+    g._start_duel()
+    menu = {m["key"]: m for m in g.status()["menu"]}
+    assert menu["medicine"]["can"] and not menu["food"]["can"] and menu["food"]["note"] == "no time to eat"
+    g.choose(menu["medicine"]["index"])
+    assert g.health == 40 + engine.MEDICINE and g.order is None and g.card == DUEL  # it landed at once
+
+
+def test_allies_die_fighting_at_the_horn():
+    g = Game(5, 9, new_setup(12, "Jake", ["Sam", "Lou"]))
+    g.choose(len(g.arena.layout))
+    assert g.allies == ["Sam", "Lou"] and g.nemesis in g.pool
+    full = g._nemesis_health()
+    g._start_duel()
+    story = next(e["text"] for e in g.log if e["kind"] == "story" and "reached the horn" in e["text"])
+    assert "Sam and Lou were gone" in story and g.opp_health == full - 2 * engine.ALLY_LAST_STAND
+    assert not any("in a row" in e["text"] for e in g.log)
+
+
+def test_killing_your_ally_shows_once():
+    g = Game(5, 9, SETUP)
+    g.choose(len(g.arena.layout))
+    snap = g._snap()
+    g._apply({"ally": "dies", "kill": 1}, cards()["betrayal"])
+    g._delta(snap)
+    assert g.log[-1]["text"] == "⚔️ Gingi"
+
+
+def test_the_score_says_how_it_was_built():
+    g = play(BOTS["smart"], 3)
+    p = g.score_parts()
+    assert p["total"] == g.score() == round(p["points"] * p["district"] * (1 + 0.1 * p["stars"]))
+
+
+def test_a_lost_final_fight_says_how_close_it_was():
+    for seed in range(200):
+        g = play(BOTS["casual"], seed)
+        if g.cause and "final fight" in g.cause:
+            assert "you fell with" in g.recap and f"on {g.opp_health} health" in g.recap
+            return
+    raise AssertionError("no final fight lost")

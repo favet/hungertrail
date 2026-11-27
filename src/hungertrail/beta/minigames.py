@@ -84,11 +84,11 @@ def fish_params(r: random.Random, kind: str, bar: int) -> dict:
     t = 0
     while t < duration:
         if kind == "trout":
-            if r.random() < 0.35:
-                t += r.randint(15, 40)  # it holds still, then darts
+            if r.random() < 0.4:
+                t += r.randint(20, 45)  # it holds still, then darts
             else:
-                t += r.randint(14, 30)
-                pos = _clamp(pos + r.choice((-1, 1)) * r.randint(1500, 4500), 500, 9500)
+                t += r.randint(28, 44)  # a dart, but never faster than your bar can follow
+                pos = _clamp(pos + r.choice((-1, 1)) * r.randint(1000, 2600), 500, 9500)
         elif kind == "leech":
             t += r.randint(50, 90)
             pos = _clamp(pos + r.choice((-1, 1)) * r.randint(500, 1800), low, 9500)
@@ -139,7 +139,7 @@ def fish_run(p: dict, toggles: list[int]) -> tuple[bool, int]:
 ANIMALS = {
     # kind: emoji, supplies, half-width of the target
     "rabbit": ("🐇", 1, 500),
-    "deer": ("🦌", 2, 900),
+    "deer": ("🦌", 2, 800),
     "groosling": ("🦃", 1, 700),
 }
 
@@ -177,7 +177,7 @@ def hunt_params(r: random.Random, weapon: str, extra_bird: bool) -> dict:
             emoji, food, half = ANIMALS[kind]
             animals.append({
                 "kind": kind, "emoji": emoji, "food": food + (1 if spear else 0),
-                "half": half * 3 // 2 if spear else half, "path": _animal_path(r, kind, duration),
+                "half": half * 6 // 5 if spear else half, "path": _animal_path(r, kind, duration),
             })
         shots.append({"speed": speed, "duration": duration, "animals": animals})
     return {"game": "hunt", "weapon": weapon, "shots": shots}
@@ -233,7 +233,7 @@ def hide_params(r: random.Random, base: int, breath_bonus: int, half_bonus: int,
     half = _clamp(1300 - (base - 60) * 15, 800, 1700) + half_bonus + (300 if boss else 0)
     breath = 130 + breath_bonus
     margin = 22
-    lo, hi = (45, 80) if boss else (60, 110)
+    lo, hi = (40, 85) if boss else (50, 120)  # how fast the light moves: it changes pace, so no two passes are alike
     for _ in range(300):
         side = r.choice((-2000, 12000))
         path, t, pos = [[0, side]], 0, side
@@ -278,6 +278,7 @@ def hide_run(p: dict, toggles: list[int]) -> tuple[str, int]:
 
 
 # ------------------------------------------------------------------ read and react (the final fight)
+FEINT_AT = (4, 5)  # how far through the wind-up a feint switches sides: later is harder to read
 # They wind up on one side. Block that side as the blow lands; a clean block opens a moment to strike.
 def fight_params(r: random.Random, stance: str, boss: bool, rope: bool, weapon_bonus: int, exchange: int = 0,
                  read: bool = False) -> dict:
@@ -289,7 +290,8 @@ def fight_params(r: random.Random, stance: str, boss: bool, rope: bool, weapon_b
     windup = max(20, r.randint(lo, hi) - 3 * exchange)
     impact = tell + windup
     first = r.randint(0, 1)
-    feint = tell + windup // 2 if r.random() < ((0.25 if read else 0.5) if boss else 0.3) + 0.06 * exchange else -1
+    # A feint switches sides late in the wind-up: FEINT_AT of the way through it.
+    feint = tell + windup * FEINT_AT[0] // FEINT_AT[1] if r.random() < ((0.25 if read else 0.45) if boss else 0.3) + 0.06 * exchange else -1
     side = 1 - first if feint >= 0 else first
     early = (20 if stance == "careful" else 12) + (8 if rope else 0)
     open_at = impact + 8
@@ -320,7 +322,7 @@ def clean_taps(raw, shots: int) -> list[int]:
 # ------------------------------------------------------------------ players for the bots
 # Skill is how good the hands are: 0 is a first-time player, 1 a sharp one.
 def bot_fish(p: dict, skill: float, r: random.Random) -> list[int]:
-    lag = round(14 - 8 * skill + r.randint(0, 4))
+    lag = round(22 - 12 * skill + r.randint(0, 4))  # a person sees the fish move a beat late
     slack = round(900 - 600 * skill)  # how far off the fish it lets the bar drift before reacting
     hold, y, v = False, p.get("y0", 0), 0
     top = SPAN - p["bar"]
@@ -387,11 +389,19 @@ def _fix(toggles: list[int], duration: int) -> list[int]:
 
 
 def bot_fight(p: dict, skill: float, r: random.Random) -> list[int]:
-    fooled = p["feint"] >= 0 and r.random() < 0.15 + 0.45 * (1 - skill)
-    side = p["side"] if r.random() < 0.82 + 0.15 * skill else 1 - p["side"]
-    if fooled:
-        side = p["first"]
+    """Hands that react like a person's: it takes `react` ticks to see something and press. It waits for
+    the ring to close, so a feint it sees in time doesn't fool it; one that comes too late does."""
+    react = max(6, round(r.gauss(19 - 12 * skill, 2.5)))  # skill 0.55: about 200 ms
     lo, hi = p["block"]
-    bt = round((lo + hi) / 2 + r.gauss(0, 13 - 7 * skill))
-    st = round(p["open"][0] + abs(r.gauss(14 + 8 * (1 - skill), 9 - 4 * skill)))
-    return [bt, side, st]
+    aim = round((lo + hi) / 2 + r.gauss(0, 7 - 4 * skill))
+    side = p["first"]
+    if p["feint"] >= 0:
+        seen = p["feint"] + react
+        if aim >= seen:
+            side = p["side"]
+        elif seen <= hi and r.random() < skill:  # caught it late, and held the block back
+            aim, side = seen, p["side"]
+    if r.random() < 0.06 - 0.04 * skill:  # a slip of the thumb
+        side = 1 - side
+    st = p["open"][0] + max(0, round(r.gauss(react, 3)))
+    return [aim, side, st]

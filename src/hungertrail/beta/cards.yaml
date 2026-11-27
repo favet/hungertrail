@@ -5,7 +5,8 @@
 #          text, requires {ally, partner, nemesis, min_remaining, max_remaining, max_health},
 #          target (any|girl|boy|nemesis: a living tribute the card is about; {Target} in text, and
 #          the one who dies if you kill)
-# Option:  label, hint, tag (safe|bold|hide), need {item|any|perk (district)|ally|supplies}
+# Option:  label, hint, tag (safe|bold|hide), need {item|any|without (an item you must not carry:
+#          an option a better one replaces)|perk (district)|ally|supplies}
 #          then EITHER  text + effects
 #          OR           roll {base, mods: [combat|escape|stealth|forage|swim]} + success + fail
 #          minigame: hide on a rolled option plays "hold still" instead of rolling (the roll's base
@@ -130,6 +131,8 @@
   days:
   - 2
   - 7
+  requires:
+    min_remaining: 7
   emoji: 🐝
   text: A nest of tracker jackers hangs from the branch above you. Below, the Career pack is asleep around their fire.
   options:
@@ -199,6 +202,8 @@
   text: A river blocks your way. It rained last night and the water is running high and fast.
   options:
   - label: Ford the river
+    need:
+      without: rope
     hint: About three feet deep. Oregon Trail says that's bad.
     tag: bold
     roll:
@@ -732,8 +737,9 @@
   - 6
   requires:
     min_remaining: 5
+  target: boy
   emoji: 📦
-  text: The Careers' supply pile, guarded by a single boy from District 3.
+  text: The Careers' supply pile, guarded by one tribute on his own, {target}.
   options:
   - label: Sneak in and steal
     tag: bold
@@ -805,7 +811,7 @@
       mods:
       - combat
     success:
-      text: The winner never sees you coming. You take their weapon.
+      text: The winner never sees you coming. You go through what they were fighting over.
       effects:
         kill: 1
         gift: true
@@ -968,7 +974,7 @@
     effects: {}
   - label: Kill him
     tag: bold
-    text: He never had a chance. The crowd goes quiet.
+    text: He never had a chance. You don't let yourself look at his face.
     effects:
       kill: 1
 - id: ledge
@@ -996,7 +1002,7 @@
         cause: a long fall
   - label: Go the long way around
     tag: hide
-    text: It costs you the whole day and your last snack.
+    text: It costs you the whole day, and a day's food.
     effects:
       supplies: -1
 - id: circling
@@ -1007,7 +1013,7 @@
   - 2
   - 8
   emoji: 👁️
-  text: Something is circling your camp in the dark. You can hear it breathing.
+  text: As the light goes, something starts circling you in the long grass. You can hear it breathing.
   options:
   - label: Stay awake all night
     tag: safe
@@ -1555,7 +1561,7 @@
         next: duel
         sponsor: true
     fail:
-      text: Too many of them. You crawl out of the water bleeding.
+      text: They were ready for you. You crawl out of the water bleeding.
       effects:
         health: -16
         next: duel
@@ -2493,9 +2499,11 @@
         health: -18
         cause: tributes in the valley
   - label: Watch who comes back
-    tag: hide
-    text: Two tributes, and a lot of weapons. Good to know.
-    effects: {}
+    hint: Wait for them to leave again, then take what they don't carry.
+    tag: safe
+    text: Two tributes, and a lot of weapons. At dusk they go out hunting, and they don't take everything. You do.
+    effects:
+      supplies: 1
 - id: nemesis_sighting
   kind: event
   place:
@@ -2616,3 +2624,504 @@
     text: They take it and laugh. You'll be hungry, but you're alive.
     effects:
       supplies: -2
+# ---- Beta 5: more cards, so the same few don't keep coming back.
+- id: fish_trap
+  kind: event
+  place:
+  - stream
+  days:
+  - 2
+  - 8
+  emoji: 🪤
+  text: Someone has built a fish trap of woven reeds in the shallows. It's full.
+  options:
+  - label: Empty it and go
+    tag: bold
+    roll:
+      base: 65
+      mods:
+      - stealth
+    success:
+      text: Three fat fish, and you're gone before anyone comes back for them.
+      effects:
+        supplies: 2
+    fail:
+      text: The owner was watching from the reeds.
+      effects:
+        health: -15
+        cause: the owner of the fish trap
+  - label: Wait for the owner
+    need:
+      any:
+      - knife
+      - axe
+      - spear
+      - trident
+      - bow
+    hint: Whoever built it comes back to check it.
+    tag: bold
+    roll:
+      base: 55
+      mods:
+      - combat
+    success:
+      text: They wade in to check the trap. They never wade out. The fish are yours.
+      effects:
+        kill: 1
+        supplies: 2
+    fail:
+      text: They saw you first.
+      effects:
+        health: -22
+        cause: the owner of the fish trap
+  - label: Leave it
+    tag: safe
+    text: Somebody worked hard on that. You let them have it.
+    effects: {}
+- id: washed_pack
+  kind: event
+  place:
+  - stream
+  days:
+  - 2
+  - 8
+  emoji: 🎒
+  text: A pack is caught on a snag in the middle of the stream. The water is fast here.
+  options:
+  - label: Wade out for it
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - swim
+    success:
+      text: Soaked to the chest, but it's yours. Food, and something else at the bottom.
+      effects:
+        supplies: 2
+        gift: true
+    fail:
+      text: The current takes your legs and some of your food with them.
+      effects:
+        health: -15
+        supplies: -1
+        cause: the current
+  - label: Hook it with your rope
+    need:
+      item: rope
+    tag: safe
+    text: Three throws, and the pack swings in to the bank.
+    effects:
+      supplies: 2
+      gift: true
+  - label: Let it go
+    tag: safe
+    text: The pack tears free and spins away downstream.
+    effects: {}
+- id: careers_asleep
+  kind: event
+  place:
+  - horn
+  days:
+  - 2
+  - 7
+  requires:
+    min_remaining: 6
+  emoji: 😴
+  text: Two Careers sleep in the mouth of the horn. Their weapons lie between them.
+  options:
+  - label: Take a spear and go
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - stealth
+    success:
+      text: Your fingers close on the shaft. Nobody stirs.
+      effects:
+        add: spear
+    fail:
+      text: A hand closes on your ankle.
+      effects:
+        health: -25
+        cause: a Career who woke up
+  - label: Kill one while they sleep
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - stealth
+    success:
+      text: It's over before the other one opens their eyes. Then you run.
+      effects:
+        kill: 1
+        add: spear
+    fail:
+      text: They were only pretending to sleep.
+      effects:
+        health: -30
+        cause: a Career who woke up
+  - label: Back away
+    tag: hide
+    text: You leave them to their dreams.
+    effects: {}
+- id: split_crate
+  kind: event
+  place:
+  - horn
+  days:
+  - 2
+  - 8
+  emoji: 📦
+  text: A crate split open in the bloodbath lies half buried in the dust. Something glints inside, and a thin wire runs
+    into the sand.
+  options:
+  - label: Cut the wire first
+    need:
+      any:
+      - knife
+      - axe
+    tag: safe
+    text: The wire goes slack. Inside, wrapped in oilcloth, something useful.
+    effects:
+      gift: true
+  - label: Pry it open
+    tag: bold
+    roll:
+      base: 55
+      mods:
+      - escape
+    success:
+      text: The wire was for show. Inside, wrapped in oilcloth, something useful.
+      effects:
+        gift: true
+    fail:
+      text: The wire was not for show.
+      effects:
+        health: -20
+        cause: a mine at the Cornucopia
+  - label: Leave it
+    tag: safe
+    text: You've seen what the Gamemakers bury.
+    effects: {}
+- id: nest_ledge
+  kind: event
+  place:
+  - ridge
+  days:
+  - 2
+  - 8
+  emoji: 🪺
+  text: A nest on a ledge just below you, full of speckled eggs.
+  options:
+  - label: Climb down for it
+    tag: bold
+    roll:
+      base: 65
+      mods:
+      - escape
+    success:
+      text: Six eggs, and a long careful climb back up.
+      effects:
+        supplies: 2
+    fail:
+      text: The ledge was smaller than it looked.
+      effects:
+        health: -16
+        cause: a long fall
+  - label: Lower yourself on your rope
+    need:
+      item: rope
+    tag: safe
+    text: Easy, with a rope. Six eggs.
+    effects:
+      supplies: 2
+  - label: Leave it
+    tag: safe
+    text: The mother comes back and glares at you.
+    effects: {}
+- id: ridge_storm
+  kind: event
+  place:
+  - ridge
+  days:
+  - 3
+  - 8
+  emoji: ⛈️
+  text: A storm rolls over the ridge. Lightning walks along the rocks toward you.
+  options:
+  - label: Get off the ridge now
+    tag: safe
+    roll:
+      base: 75
+      mods:
+      - escape
+    success:
+      text: You slide down the scree as the rock you were standing on splits.
+    fail:
+      text: The strike throws you down the slope.
+      effects:
+        health: -15
+        cause: lightning on the ridge
+  - label: Stay and catch the rain
+    tag: bold
+    roll:
+      base: 50
+      mods:
+      - forage
+    success:
+      text: Every hollow in the rock fills. You drink and fill everything you carry.
+      effects:
+        supplies: 3
+    fail:
+      text: The lightning finds you first.
+      effects:
+        health: -22
+        cause: lightning on the ridge
+  - label: Shelter under the overhang
+    tag: hide
+    text: You wait it out, soaked and shaking. The crowd changes channels.
+    effects:
+      health: -4
+      cause: the cold
+- id: rock_snake
+  kind: event
+  place:
+  - rocks
+  days:
+  - 2
+  - 8
+  emoji: 🐍
+  text: Something moves in the crack where you were about to sleep.
+  options:
+  - label: Kill it
+    need:
+      any:
+      - knife
+      - axe
+      - spear
+      - trident
+    tag: safe
+    text: A snake as thick as your wrist. Now it's supper.
+    effects:
+      supplies: 1
+  - label: Ease away from it
+    tag: safe
+    roll:
+      base: 80
+      mods:
+      - escape
+    success:
+      text: You back out slowly. It doesn't follow.
+    fail:
+      text: It was faster than you.
+      effects:
+        health: -12
+        cause: a snakebite
+  - label: Grab it behind the head
+    tag: bold
+    roll:
+      base: 45
+      mods:
+      - escape
+    success:
+      text: District kids learn this young. Supper, and the crowd loved it.
+      effects:
+        supplies: 2
+        sponsor: true
+    fail:
+      text: You grabbed too low.
+      effects:
+        health: -18
+        cause: a snakebite
+- id: rock_wounded
+  kind: event
+  place:
+  - rocks
+  days:
+  - 3
+  - 8
+  target: any
+  emoji: 🩸
+  text: '{Target} is wedged into a gap in the rocks, badly hurt, watching you.'
+  options:
+  - label: Finish it
+    tag: bold
+    roll:
+      base: 80
+      mods:
+      - combat
+    success:
+      text: They don't fight. You wish they had.
+      effects:
+        kill: 1
+    fail:
+      text: They had one good blow left in them.
+      effects:
+        health: -15
+        cause: a wounded tribute in the rocks
+  - label: Share your water
+    need:
+      supplies: 1
+    tag: safe
+    text: They drink, and they cry, and the Capitol cries with them.
+    effects:
+      supplies: -1
+      sponsor: true
+  - label: Leave them
+    tag: safe
+    text: You find another crack in the rocks, far from this one.
+    effects: {}
+- id: parachute_race
+  kind: event
+  place:
+  - open
+  days:
+  - 2
+  - 8
+  emoji: 🪂
+  text: A silver parachute drifts down onto the open ground, meant for someone else. Two tributes are already running for
+    it.
+  options:
+  - label: Race them for it
+    tag: bold
+    roll:
+      base: 45
+      mods:
+      - escape
+    success:
+      text: Your hand closes on the silver first. The crowd goes wild.
+      effects:
+        sponsor: true
+    fail:
+      text: You get there second. Second is a knife.
+      effects:
+        health: -22
+        cause: tributes racing for a parachute
+  - label: Ambush the winner
+    need:
+      any:
+      - knife
+      - axe
+      - spear
+      - trident
+      - bow
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - combat
+    success:
+      text: They're still opening it when you reach them.
+      effects:
+        kill: 1
+        sponsor: true
+    fail:
+      text: The winner was ready for a third.
+      effects:
+        health: -25
+        cause: the tribute with the parachute
+  - label: Let them fight over it
+    tag: safe
+    text: Somebody screams. You don't look back.
+    effects: {}
+- id: grass_boar
+  kind: event
+  place:
+  - open
+  days:
+  - 2
+  - 8
+  emoji: 🐗
+  text: A mutt the size of a cow is grazing in the long grass, all tusks and bristles. It hasn't seen you.
+  options:
+  - label: Hunt it
+    need:
+      any:
+      - spear
+      - trident
+      - bow
+    tag: bold
+    roll:
+      base: 60
+      mods:
+      - combat
+    success:
+      text: It takes three strikes and all your nerve. You eat for days.
+      effects:
+        supplies: 4
+    fail:
+      text: It turns faster than anything that big should.
+      effects:
+        health: -25
+        cause: a boar mutt
+  - label: Circle wide around it
+    tag: safe
+    roll:
+      base: 80
+      mods:
+      - stealth
+    success:
+      text: It never lifts its head.
+    fail:
+      text: It lifts its head.
+      effects:
+        health: -15
+        cause: a boar mutt
+- id: dark_finale
+  kind: finale
+  emoji: 🌑
+  text: The Gamemakers switch off the sun. In the black, every one of the {remaining} survivors can hear the others breathing,
+    and somewhere ahead the horn is lit like a beacon.
+  options:
+  - label: Feel your way to the light
+    tag: safe
+    roll:
+      base: 60
+      mods:
+      - escape
+    success:
+      text: Hands out, step by step, until your fingers touch warm gold.
+      effects:
+        next: duel
+    fail:
+      text: Someone else was feeling their way too, with a knife.
+      effects:
+        health: -14
+        next: duel
+        cause: someone in the dark
+  - label: Wait in the dark and let them pass
+    hint: Hold to stay down. Let go to breathe.
+    tag: hide
+    minigame: hide
+    roll:
+      base: 55
+      mods:
+      - stealth
+    success:
+      text: Footsteps pass a yard away and fade toward the light. You follow them.
+      effects:
+        next: duel
+    fail:
+      text: A hand finds your shoulder in the dark.
+      effects:
+        health: -16
+        next: duel
+        cause: someone in the dark
+  - label: Hunt them by sound
+    tag: bold
+    roll:
+      base: 40
+      mods:
+      - combat
+    success:
+      text: You hear them before they hear you. The crowd, watching in night vision, screams your name.
+      effects:
+        kill: 1
+        next: duel
+        sponsor: true
+    fail:
+      text: They heard you first.
+      effects:
+        health: -18
+        next: duel
+        cause: someone in the dark

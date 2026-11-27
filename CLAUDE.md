@@ -37,9 +37,11 @@ Beta: `uv run python -m hungertrail.beta.bots` (add `--districts` for win rate p
 Bots play the minigames with a skill (`SKILL` in `beta/bots.py`: smart 0.65, casual 0.4). Beta
 targets: a good player (smart) about 40%, casual about 25%, random about 10-15%, hider under 5%,
 and no single place much better than the smart bot. `DAMAGE`, `HIT_CAP`, `FIGHT`,
-`OPPONENT_HEALTH`, `OPEN_GIFT`, `SUPPLY_CAP` and `NEMESIS_FLOOR` in `beta/engine.py` are the main
-dials (the nemesis is always the last fight if alive; card `wound`/`study` effects weaken them for it); the games' own numbers
-are in `beta/minigames.py`. Beta event cards need a `place`; the header of `beta/cards.yaml`
+`OPPONENT_HEALTH`, `FIGHT_NEMESIS_HIT`, `OPEN_GIFT`, `SUPPLY_CAP`, `NEMESIS_FLOOR`, `NIGHT_HEAL`, `MEDICINE`
+and the `DIG_*` numbers in `beta/engine.py` are the main dials (the nemesis is always the last fight if alive; card `wound`/`study` effects weaken them for it); the games' own numbers
+are in `beta/minigames.py` (`FEINT_AT` sets how late a feint switches sides in the final fight). The bots'
+hands react like a person's; at skill 0.55 they block about as often as the beta 4 playtest did (83% with
+the feint read), so their win rates track a real player's. Beta event cards need a `place`; the header of `beta/cards.yaml`
 documents the schema. An option with `minigame: hide` is played, not rolled. Every roll goes
 through `_reveal`, which logs it for the wheel (`static/beta/wheel.js`). The daily script (nemesis
 days and places, finale, twist, place menus) lives in `Arena`. Bump `VERSION` in `beta/runs.py`
