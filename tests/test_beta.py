@@ -1,3 +1,4 @@
+import re
 import json
 import random
 import shutil
@@ -709,13 +710,12 @@ def test_scores_spread_out():
 client = TestClient(app)
 
 
-def test_beta_page_on_beta_host_only():
-    live = client.get("/")
-    assert "Hunger Trail β" not in live.text
-    beta = client.get("/", headers={"host": "beta.hungertrail.com"})
-    assert "Hunger Trail β" in beta.text
-    assert "Hunger Trail β" in client.get("/", headers={"x-ht-site": "beta"}).text
-    assert "Hunger Trail β" in client.get("/beta").text
+def test_beta_5_is_the_main_game_without_beta_wording():
+    for page in (client.get("/"), client.get("/", headers={"host": "beta.hungertrail.com"}), client.get("/beta")):
+        assert page.status_code == 200 and "/static/beta/beta.js" in page.text
+        words = re.sub(r"<[^>]*>", " ", page.text.split("<script")[0])  # what a player reads, plus meta tags
+        meta = " ".join(re.findall(r'content="([^"]*)"', page.text)) + " ".join(re.findall(r"<title>(.*?)</title>", page.text))
+        assert "β" not in words + meta and "beta" not in (words + meta).lower()
 
 
 def test_beta_full_run_and_board():
@@ -737,12 +737,15 @@ def test_beta_full_run_and_board():
         res = client.post("/api/beta/run/choose", json={"token": v["token"], "index": o["index"], "param": param})
         assert res.status_code == 200, res.text
         v = res.json()
-    assert v["over"] and "beta.hungertrail.com" in v["result"]["share"] and v["result"]["multiplier"] == 2
+    share = v["result"]["share"]
+    assert v["over"] and share.endswith("hungertrail.com") and "beta" not in share and "β" not in share
+    assert v["result"]["multiplier"] == 2
     assert bought
     sub = client.post("/api/beta/leaderboard", json={"token": v["token"], "nickname": "BetaTester"})
     assert sub.status_code == 200
     rows = client.get("/api/beta/leaderboard").json()["rows"]
     assert rows and rows[0]["nickname"] == "BetaTester"
+    # The retired original game's API keeps its own board, so its runs can't land on the real one.
     assert all(r["nickname"] != "BetaTester" for r in client.get("/api/leaderboard").json()["rows"])
 
 
