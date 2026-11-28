@@ -26,10 +26,11 @@ On Windows, set `PYTHONIOENCODING=utf-8` before running scripts that print emoji
 - `src/hungertrail/leaderboard.py`: SQLite locally; in production a Cloudflare Worker + D1
   (`ops/leaderboard`), because Render's free disk is wiped on deploy.
 - `src/hungertrail/static/`: vanilla JS front end, phone-first. `art.js` draws the pixel art.
-- `src/hungertrail/beta/`: the beta game served on beta.hungertrail.com (and `/beta` locally). Its
-  own engine, cards, bots and run tokens, so beta changes never touch live runs. Front end:
-  `templates/beta.html`, `static/beta/`. API under `/api/beta/`. Its leaderboard is a local SQLite
-  file that resets on deploy.
+- `src/hungertrail/beta/`: the game players get. Since beta 5 it is served at `/` on hungertrail.com
+  (and beta.hungertrail.com, `/beta`), with no beta wording shown to players. Its own engine, cards,
+  bots and run tokens. Front end: `templates/beta.html`, `static/beta/`. API under `/api/beta/`. It
+  uses the real leaderboard (D1 in production). The original game in `game/` is retired: no page
+  serves it, and its `/api/run` + `/api/leaderboard` routes keep a throwaway local board.
 
 ## Balance
 
@@ -45,7 +46,7 @@ the feint read), so their win rates track a real player's. Beta event cards need
 documents the schema. An option with `minigame: hide` is played, not rolled. Every roll goes
 through `_reveal`, which logs it for the wheel (`static/beta/wheel.js`). The daily script (nemesis
 days and places, finale, twist, place menus) lives in `Arena`. Bump `VERSION` in `beta/runs.py`
-when a change would alter runs in progress, and `RELEASE` (shown on the title screen) for each new beta.
+when a change would alter runs in progress, and `RELEASE` for each new release (no longer shown to players).
 
 Beta minigames are replayed: the browser sends input ticks, the server reruns the same integer
 simulation. `beta/minigames.py` and `static/beta/minigames.js` must stay in step

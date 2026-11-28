@@ -15,7 +15,6 @@ from .config import settings
 from .daily import daily_for, today
 from .beta import lore as beta_lore
 from .beta import runs as beta_runs
-from .game import lore
 from .leaderboard import BoardError, LocalBoard, clean_nickname, make_board
 
 HERE = Path(__file__).parent
@@ -25,9 +24,11 @@ STATIC_VERSION = str(int(max(p.stat().st_mtime for p in (HERE / "static").rglob(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # The real board (D1 in production) belongs to the game on hungertrail.com, which runs the beta 5
+    # rules through the /api/beta routes. The retired original game's API keeps a throwaway local board
+    # so its runs can never land on the real one.
     app.state.board = make_board(settings, settings.leaderboard_url)
-    # The beta keeps its own throwaway board (Render's disk resets on deploy, which is fine for a beta).
-    app.state.beta_board = LocalBoard(replace(settings, db_path=settings.db_path.with_name("beta.sqlite3")))
+    app.state.classic_board = LocalBoard(replace(settings, db_path=settings.db_path.with_name("classic.sqlite3")))
     yield
 
 
@@ -40,12 +41,6 @@ def _daily_info() -> dict:
     d = daily_for(settings, today(settings, now))
     tomorrow = datetime.combine(d.date + timedelta(days=1), datetime.min.time(), settings.timezone)
     return {"date": d.date.isoformat(), "number": d.number, "next_in": int((tomorrow - now).total_seconds())}
-
-
-def _is_beta(request: Request) -> bool:
-    # beta.hungertrail.com reaches us through a Cloudflare Worker that sets x-ht-site.
-    host = request.headers.get("host", "")
-    return host.startswith("beta.") or request.headers.get("x-ht-site") == "beta"
 
 
 def _beta_page(request: Request):
@@ -68,21 +63,8 @@ def beta_index(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    if _is_beta(request):
-        return _beta_page(request)
-    info = _daily_info()
-    config = {
-        "daily": info,
-        "districts": [
-            {"id": k, "name": v, "mult": lore.multiplier(k), "career": k in lore.CAREERS}
-            for k, v in lore.DISTRICTS.items()
-        ],
-        "traits": [{"id": k, "name": n, "desc": d} for k, (n, d) in lore.TRAITS.items()],
-        "names": lore.DEFAULT_NAMES,
-    }
-    return templates.TemplateResponse(
-        request, "index.html", {"config": config, "daily": info, "v": STATIC_VERSION}
-    )
+    # Beta 5 is the main game now, on hungertrail.com and beta.hungertrail.com alike.
+    return _beta_page(request)
 
 
 class StartBody(BaseModel):
@@ -150,7 +132,7 @@ def leaderboard(request: Request, day: str | None = None):
         date.fromisoformat(day)
     except ValueError:
         raise HTTPException(400, "bad date")
-    return {"date": day, "rows": request.app.state.board.top(day)}
+    return {"date": day, "rows": request.app.state.classic_board.top(day)}
 
 
 @app.post("/api/leaderboard")
@@ -173,10 +155,10 @@ def submit(request: Request, body: SubmitBody):
         "district": game.district, "cause": game.cause or "", "emoji": game.emoji_row(),
     }
     try:
-        request.app.state.board.submit(entry)
+        request.app.state.classic_board.submit(entry)
     except BoardError as e:
         raise HTTPException(409, str(e))
-    rows = request.app.state.board.top(p["d"], 200)
+    rows = request.app.state.classic_board.top(p["d"], 200)
     rank = next((i + 1 for i, r in enumerate(rows) if r["nickname"] == nickname), None)
     return {"ok": True, "rank": rank}
 
@@ -242,7 +224,7 @@ def beta_leaderboard(request: Request, day: str | None = None):
         date.fromisoformat(day)
     except ValueError:
         raise HTTPException(400, "bad date")
-    return {"date": day, "rows": request.app.state.beta_board.top(day)}
+    return {"date": day, "rows": request.app.state.board.top(day)}
 
 
 @app.post("/api/beta/leaderboard")
@@ -266,10 +248,10 @@ def beta_submit(request: Request, body: SubmitBody):
         "district": game.district, "cause": game.cause or "", "emoji": game.emoji_row(),
     }
     try:
-        request.app.state.beta_board.submit(entry)
+        request.app.state.board.submit(entry)
     except BoardError as e:
         raise HTTPException(409, str(e))
-    rows = request.app.state.beta_board.top(p["d"], 200)
+    rows = request.app.state.board.top(p["d"], 200)
     rank = next((i + 1 for i, r in enumerate(rows) if r["nickname"] == nickname), None)
     return {"ok": True, "rank": rank}
 

@@ -18,7 +18,7 @@ from . import lore
 from .engine import Game, new_setup, replay
 from .minigames import MAX_INPUTS
 
-RELEASE = "Beta 5"  # the name on the title screen, so a tester can tell which beta is live
+RELEASE = "5"  # internal release number (no longer shown to players)
 VERSION = "b9"  # b9: beta 5 (a varied dig, one pack screen, a harder final fight, ranked first runs)
 
 
@@ -45,7 +45,7 @@ def decode(settings: Settings, token: str) -> dict:
         raise RunError("bad token")
     p = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
     if p.get("v") != VERSION:
-        raise RunError("This run is from an older beta. Start a new one.")
+        raise RunError("This run is from an older version of the game. Start a new one.")
     return p
 
 
@@ -113,8 +113,8 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
     if not game.over:
         return None
     number = daily_for(settings, date.fromisoformat(p["d"])).number
-    title = (f"HUNGER TRAIL β · Arena #{number}" + ("" if p.get("r") else " (replay)") if p["m"] == "daily"
-             else "HUNGER TRAIL β (practice)")
+    title = (f"HUNGER TRAIL · Arena #{number}" + ("" if p.get("r") else " (replay)") if p["m"] == "daily"
+             else "HUNGER TRAIL (practice)")
     kills = f"{game.kills} kill{'s' if game.kills != 1 else ''}"
     if game.won:
         line, end = f"👑 VICTOR · {kills} · Day {game.day}", "Won the Hunger Games."
@@ -122,7 +122,7 @@ def result(settings: Settings, game: Game, p: dict) -> dict | None:
         line, end = f"Placed {ordinal(game.placement)} of 24 · {kills} · Day {game.day}", (
             "Gave up." if game.cause == "giving up" else f"Killed by {game.cause}")
     mult = lore.multiplier(game.district)
-    share = "\n".join([f"{title} · District {game.district} (×{mult})", line, game.emoji_row(), end, "beta.hungertrail.com"])
+    share = "\n".join([f"{title} · District {game.district} (×{mult})", line, game.emoji_row(), end, "hungertrail.com"])
     return {
         "won": game.won,
         "placement": game.placement,
