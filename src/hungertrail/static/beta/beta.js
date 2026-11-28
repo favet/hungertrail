@@ -697,13 +697,13 @@ async function submitScore() {
 // ------------------------------------------------------------------ leaderboard
 async function openBoard() {
   show("board");
-  $("#board-date").textContent = `${CFG.release} · Arena #${daily.number}`;
+  $("#board-date").textContent = `Arena #${daily.number}`;
   const rows = $("#board-rows");
   rows.replaceChildren(el("p", { class: "dim", text: "Reading the names..." }));
   try {
     const data = await api("/leaderboard?day=" + daily.date);
     const me = store.get("submitted." + daily.date);
-    if (!data.rows.length) { rows.replaceChildren(el("p", { class: "dim", text: "No one has finished today's beta arena yet. Be the first name on the board." })); return; }
+    if (!data.rows.length) { rows.replaceChildren(el("p", { class: "dim", text: "No one has finished today's arena yet. Be the first name on the board." })); return; }
     rows.replaceChildren(...data.rows.map((r, i) => el("div", { class: "brow" + (r.nickname === me ? " me" : "") },
       el("span", { class: "rank", text: i + 1 }),
       el("span", { class: "who" }, el("b", { text: r.nickname }), el("small", { text: ` D${r.district} · ${r.placement === 1 ? "Victor" : "#" + r.placement} · ${r.kills}k` })),
